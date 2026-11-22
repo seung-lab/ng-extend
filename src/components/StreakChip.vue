@@ -16,12 +16,19 @@
  *    simply shows with its pips already lit.
  */
 import {computed, onUnmounted, ref, watch} from 'vue';
+import {useProofreadingBackendStore} from '../store';
+import {QUIET_TEST_HOST} from '../util/test_host';
+import {FLAME_TIERS, flameTierIndex, type FlameTier} from '../util/streak_tiers';
 
 const props = defineProps<{ current: number; best: number }>();
+// A test hook can set the day count by hand (window.__testStreakFlame below).
+const testDays = ref<number | null>(null);
+const days = computed(() => testDays.value ?? props.current);
+const bestDays = computed(() => Math.max(props.best, days.value));
 
 // The number sits inside a bigger 🔥, in gold, and the flame grows with each
 // digit so the number always fits (Kfay #589).
-const digits = computed(() => String(Math.max(0, props.current)).length);
+const digits = computed(() => String(Math.max(0, days.value)).length);
 const flamePx = computed(() => digits.value <= 1 ? 24 : digits.value === 2 ? 28 : 32);
 const flameScale = computed(() => flamePx.value / 13);   // the fire was drawn for a 13px 🔥
 const countPx = computed(() => Math.round(flamePx.value * (digits.value <= 1 ? 0.5 : digits.value === 2 ? 0.42 : 0.34)));
@@ -36,12 +43,12 @@ const still = () => !!window.matchMedia?.('(prefers-reduced-motion: reduce)').ma
 
 // ── Day pips: the streak against your best, one pip a day (a bar past 14) ──
 const PIP_MAX = 14;
-const pipTotal = computed(() => Math.max(props.current, props.best, 1));
+const pipTotal = computed(() => Math.max(days.value, bestDays.value, 1));
 const usePips = computed(() => pipTotal.value <= PIP_MAX);
-const isBest = computed(() => props.current >= props.best && props.current > 1);
+const isBest = computed(() => days.value >= bestDays.value && days.value > 1);
 // Congratulations that grow with the streak (Ames 2026-10-04).
 const cheer = computed(() => {
-  const n = props.current;
+  const n = days.value;
   // Opening the game counts as a day (Ames 2026-10-06), so the ask is to
   // come back, not to edit.
   const keep = 'Come back tomorrow to keep the flame going.';
@@ -52,20 +59,107 @@ const cheer = computed(() => {
   if (n < 30) return `Amazing, ${n} days in a row! That is real dedication. ${keep}`;
   return `Incredible, ${n} days in a row! You are an EyeWire legend. ${keep}`;
 });
-const shownCount = ref(props.current);       // the title's number rolls up on open
+const shownCount = ref(days.value);       // the title's number rolls up on open
 let rollRaf = 0;
 watch(open, v => {
   cancelAnimationFrame(rollRaf);
-  if (!v || still()) { shownCount.value = props.current; return; }
-  const t0 = performance.now(), DUR = 420 + Math.min(380, props.current * 30);
+  if (!v || still()) { shownCount.value = days.value; return; }
+  const t0 = performance.now(), DUR = 420 + Math.min(380, days.value * 30);
   const step = (now: number) => {
     const q = Math.min(1, (now - t0) / DUR), e = 1 - Math.pow(1 - q, 3);
-    shownCount.value = Math.round(props.current * e);
+    shownCount.value = Math.round(days.value * e);
     if (q < 1) rollRaf = requestAnimationFrame(step);
   };
   shownCount.value = 0;
   rollRaf = requestAnimationFrame(step);
 });
+
+// ── Flame tiers (Ames 2026-11-20): the flame levels up as the streak grows
+//    (util/streak_tiers.ts). The look on screen (shownIdx) can lag the streak
+//    for a moment: a level up shows the old flame, flares, then swaps. ──────
+const tierIdx = computed(() => flameTierIndex(days.value));
+const shownIdx = ref(tierIdx.value);
+const shown = computed(() => FLAME_TIERS[shownIdx.value]);
+const nextTier = computed(() => FLAME_TIERS[shownIdx.value + 1] ?? null);
+const levelUp = ref<FlameTier | null>(null);   // set while a level up is on screen
+let celebrating = false, autoPinned = false;
+let celebTimers: number[] = [];
+const later = (ms: number, fn: () => void) => { celebTimers.push(window.setTimeout(fn, ms)); };
+
+// The highest tier this browser has celebrated for this player's current run.
+// A lower tier than that means the streak broke: the record drops, nothing plays.
+const backend = useProofreadingBackendStore();
+const seenKey = () => backend.userId ? `nge_flame_tier_v1:${backend.userId}` : '';
+function readSeen(k: string): number | null {
+  try { const v = localStorage.getItem(k); return v === null ? null : Number(v); } catch { return null; }
+}
+function writeSeen(k: string, i: number) { try { localStorage.setItem(k, String(i)); } catch { /* storage blocked: it plays again next time */ } }
+
+watch([() => backend.userId, tierIdx], () => {
+  if (testDays.value !== null) return;
+  const now = tierIdx.value, k = seenKey();
+  if (!k) { if (!celebrating) shownIdx.value = now; return; }
+  const seen = readSeen(k);
+  const due = now >= 1 && (seen === null || !Number.isFinite(seen) || now > seen);
+  if (seen !== now) writeSeen(k, now);
+  // a branch test site starts with empty storage every time: no card there
+  if (due && !QUIET_TEST_HOST) celebrate(now - 1, now);
+  else if (!celebrating) shownIdx.value = now;
+}, { immediate: true });
+
+/** The level up: the old flame heats, flares, and comes back as the new one,
+ *  with a ring, a shower in the new color and the card saying so. */
+function celebrate(from: number, to: number) {
+  celebTimers.forEach(clearTimeout); celebTimers = [];
+  celebrating = true;
+  shownIdx.value = from;
+  const swap = () => {
+    shownIdx.value = to;
+    levelUp.value = FLAME_TIERS[to];
+    if (!pinned.value) { pinned.value = true; autoPinned = true; }
+  };
+  const end = () => {
+    celebrating = false; levelUp.value = null;
+    if (autoPinned) { pinned.value = false; autoPinned = false; }
+    if (!hovering.value) heatTarget = 0;
+  };
+  // let the page settle first: the card should not land in the loading rush
+  later(1600, () => {
+    if (still()) { swap(); later(7000, end); return; }
+    heatTarget = 1; kick = 0.8; wakeFire();         // the old flame heats up
+    later(850, () => {
+      swap();
+      kick = 2.8; for (let i = 0; i < 26; i++) spawnBlob(2.2);
+      chipEl.value?.classList.remove('nge-streak-chip--leveled');
+      void chipEl.value?.offsetWidth;
+      chipEl.value?.classList.add('nge-streak-chip--leveled');
+      const r = flameEl.value?.getBoundingClientRect();
+      if (r) sparkShower(r.left + r.width / 2, r.top + r.height * 0.55, true);
+      later(1400, () => { if (!hovering.value) heatTarget = 0.35; });
+      later(6500, end);
+    });
+  });
+}
+
+// Test from the console: window.__testStreakFlame(30) plays the level up to
+// Plasma as if the streak were 30 today; __testStreakFlame() puts it back.
+(window as any).__testStreakFlame = (n?: number) => {
+  if (n === undefined) { testDays.value = null; shownIdx.value = tierIdx.value; return; }
+  testDays.value = n;
+  const to = flameTierIndex(n);
+  if (to >= 1) celebrate(to - 1, to); else shownIdx.value = to;
+};
+
+/** The fire's colors, white hot at the root out to the tip, for the tiers
+ *  that are not simply a new hue (those are a filter over the whole fire). */
+function firePalette(): string[] {
+  switch (shown.value.id) {
+    case 'kindled': return ['255,246,206', '255,206,84', '255,148,40', '228,84,22'];
+    case 'bluecore': return ['214,240,255', '130,200,255', '255,160,56', '226,74,22'];
+    case 'solar': return ['255,253,232', '255,230,120', '255,186,64', '255,126,34'];
+    default: return ['255,236,170', '255,176,58', '255,104,26', '214,48,18'];
+  }
+}
 
 // ── The fire: soft additive blobs rising through the 🔥, drawn on top ──────
 const FW = 46, FH = 54;                       // canvas box, CSS px, centred on the flame
@@ -109,6 +203,7 @@ function fireFrame(now: number) {
 
   ctx.clearRect(0, 0, FW, FH);
   ctx.globalCompositeOperation = 'lighter';
+  const pal = firePalette();
   for (const b of blobs) {
     b.life += dt;
     const k = b.life / b.max;
@@ -120,7 +215,7 @@ function fireFrame(now: number) {
     const r = b.r * (1 - k * 0.72);
     const a = Math.sin(Math.min(1, k * 4) * 1.5708) * (1 - k) * 0.5 * Math.min(1, heat + 0.2);
     // white hot at the root, then gold, orange, a deep red tip
-    const col = k < 0.22 ? '255,236,170' : k < 0.5 ? '255,176,58' : k < 0.78 ? '255,104,26' : '214,48,18';
+    const col = k < 0.22 ? pal[0] : k < 0.5 ? pal[1] : k < 0.78 ? pal[2] : pal[3];
     const g = ctx.createRadialGradient(b.x, b.y, 0, b.x, b.y, r);
     g.addColorStop(0, `rgba(${col},${a.toFixed(3)})`);
     g.addColorStop(1, `rgba(${col},0)`);
@@ -161,6 +256,7 @@ function onLeave() { hovering.value = false; heatTarget = 0; }
 //    shower of sparks that arc out and fall, each with its own weight. ──────
 function stoke() {
   pinned.value = !pinned.value;
+  autoPinned = false;
   if (still()) return;
   kick = 1.9; wakeFire();
   for (let i = 0; i < 14; i++) spawnBlob(1.6);
@@ -171,9 +267,11 @@ function stoke() {
   if (r) sparkShower(r.left + r.width / 2, r.top + r.height * 0.55);
 }
 
-function sparkShower(cx: number, cy: number) {
-  const W = 340, H = 280, OX = W / 2, OY = 40, DUR = 1500;
+function sparkShower(cx: number, cy: number, big = false) {
+  const W = 340, H = 280, OX = W / 2, OY = 40, DUR = big ? 2000 : 1500;
   const cv = document.createElement('canvas');
+  // the sparks take the flame's color: the same filter as the fire
+  cv.className = `nge-streak-tint nge-streak-tint--${shown.value.id}`;
   cv.style.cssText = `position:fixed;left:${cx - OX}px;top:${cy - OY}px;width:${W}px;height:${H}px;pointer-events:none;z-index:100000;`;
   cv.setAttribute('aria-hidden', 'true');
   document.body.appendChild(cv);
@@ -183,9 +281,9 @@ function sparkShower(cx: number, cy: number) {
   cv.width = W * d; cv.height = H * d; ctx.setTransform(d, 0, 0, d, 0, 0);
   // The chip sits at the very top of the screen, so the sparks are thrown out
   // and DOWN: a fan under the bar, each one falling under its own gravity.
-  const sparks = Array.from({ length: 46 }, () => {
+  const sparks = Array.from({ length: big ? 90 : 46 }, () => {
     const a = Math.PI * (0.06 + Math.random() * 0.88);           // a downward fan
-    const sp = 90 + Math.random() * 250;
+    const sp = (90 + Math.random() * 250) * (big ? 1.2 : 1);
     return { x: OX, y: OY, px: OX, py: OY, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp * 0.55 - 40 - Math.random() * 70,
       g: 420 + Math.random() * 380, drag: 1.2 + Math.random() * 1.6, life: 0, max: 0.55 + Math.random() * 0.85,
       w: 0.8 + Math.random() * 1.5, hot: Math.random() };
@@ -199,6 +297,15 @@ function sparkShower(cx: number, cy: number) {
     ctx.clearRect(0, 0, W, H);
     ctx.globalCompositeOperation = 'lighter';
     // the ring: one thin shock that opens and thins out
+    // a level up sends a second, wider ring after the first
+    const q2 = (el - 160) / 700;
+    if (big && q2 > 0 && q2 < 1) {
+      const e2 = 1 - Math.pow(1 - q2, 3);
+      ctx.beginPath(); ctx.arc(OX, OY, 10 + e2 * 96, 0, 6.2832);
+      ctx.lineWidth = 3 * (1 - q2) + 0.4;
+      ctx.strokeStyle = `rgba(255,214,140,${(0.8 * (1 - q2)).toFixed(3)})`;
+      ctx.stroke();
+    }
     const q = el / 420;
     if (q < 1) {
       const e = 1 - Math.pow(1 - q, 3);
@@ -243,19 +350,30 @@ watch(pinned, v => {
 });
 onUnmounted(() => {
   cancelAnimationFrame(fireRaf); cancelAnimationFrame(rollRaf);
+  celebTimers.forEach(clearTimeout);
   document.removeEventListener('pointerdown', onDocDown, true);
 });
 </script>
 
 <template>
   <div ref="chipEl" class="nge-streak-chip" :class="{ 'nge-streak-chip--open': open, 'holo-on': pinned }"
-       tabindex="0" role="button" :aria-expanded="open" :aria-label="`Editing streak: ${current} days`"
+       tabindex="0" role="button" :aria-expanded="open" :aria-label="`Editing streak: ${days} days`"
        @pointerenter="onEnter" @pointerleave="onLeave" @focus="onEnter" @blur="onLeave"
        @click="stoke" @keydown="onKey">
-    <span class="nge-streak-chip-fire" :style="{ '--flame-px': flamePx + 'px', '--flame-scale': flameScale, '--count-px': countPx + 'px' }">
-      <span ref="flameEl" class="nge-streak-chip-flame">🔥</span>
-      <canvas ref="fireCv" class="nge-streak-chip-canvas" aria-hidden="true"></canvas>
-      <span class="nge-streak-chip-count">{{ current }}</span>
+    <span class="nge-streak-chip-fire" :class="`nge-streak-tier--${shown.id}`"
+          :style="{ '--flame-px': flamePx + 'px', '--flame-scale': flameScale, '--count-px': countPx + 'px', '--tier-rgb': shown.rgb }">
+      <!-- the tier's ornaments, behind and around the flame (util/streak_tiers.ts) -->
+      <span v-if="shownIdx >= 1" class="nge-streak-orn-glow" aria-hidden="true"></span>
+      <span v-if="shown.id === 'solar'" class="nge-streak-orn-rays" aria-hidden="true"></span>
+      <span class="nge-streak-tint" :class="`nge-streak-tint--${shown.id}`">
+        <span ref="flameEl" class="nge-streak-chip-flame">🔥</span>
+        <canvas ref="fireCv" class="nge-streak-chip-canvas" aria-hidden="true"></canvas>
+      </span>
+      <span v-if="shown.id === 'plasma' || shown.id === 'starfire'" class="nge-streak-orn-orbit" aria-hidden="true">
+        <i></i><i v-if="shown.id === 'starfire'" style="--o: 0.5"></i>
+      </span>
+      <span v-if="shown.id === 'nova'" class="nge-streak-orn-crown" aria-hidden="true"><i>✦</i><i>✦</i><i>✦</i></span>
+      <span class="nge-streak-chip-count">{{ days }}</span>
     </span>
 
     <!-- The card. v-if, so every opening is an arrival and runs its entrance once. -->
@@ -264,18 +382,26 @@ onUnmounted(() => {
       <span class="nge-streak-tip-scan" aria-hidden="true"></span>
       <i class="nge-streak-tip-brk tl" aria-hidden="true"></i><i class="nge-streak-tip-brk tr" aria-hidden="true"></i>
       <i class="nge-streak-tip-brk bl" aria-hidden="true"></i><i class="nge-streak-tip-brk br" aria-hidden="true"></i>
+      <div v-if="levelUp" class="nge-streak-tip-level nge-streak-tip-row" style="--i: 0" :style="{ '--tier-rgb': levelUp.rgb }">
+        <span class="nge-streak-tip-level-label">New flame</span>
+        <span class="nge-streak-tip-level-name">{{ levelUp.name }}!</span>
+      </div>
       <div class="nge-streak-tip-title nge-streak-tip-row" style="--i: 0">🔥 <span class="nge-streak-tip-num">{{ shownCount }}</span>-day streak</div>
       <div v-if="usePips" class="nge-streak-tip-pips nge-streak-tip-row" style="--i: 1"
-           :title="isBest ? 'Your best streak yet' : `${current} of your best ${best} days`">
-        <i v-for="n in pipTotal" :key="n" class="nge-streak-tip-pip" :class="{ 'is-lit': n <= current, 'is-head': n === current }" :style="{ '--n': n }"></i>
+           :title="isBest ? 'Your best streak yet' : `${days} of your best ${bestDays} days`">
+        <i v-for="n in pipTotal" :key="n" class="nge-streak-tip-pip" :class="{ 'is-lit': n <= days, 'is-head': n === days }" :style="{ '--n': n }"></i>
       </div>
-      <div v-else class="nge-streak-tip-bar nge-streak-tip-row" style="--i: 1" :title="`${current} of your best ${Math.max(current, best)} days`">
-        <i :style="{ '--fill': Math.round(current / pipTotal * 100) + '%' }"></i>
+      <div v-else class="nge-streak-tip-bar nge-streak-tip-row" style="--i: 1" :title="`${days} of your best ${Math.max(days, bestDays)} days`">
+        <i :style="{ '--fill': Math.round(days / pipTotal * 100) + '%' }"></i>
       </div>
       <div class="nge-streak-tip-body nge-streak-tip-row" style="--i: 2">{{ cheer }}</div>
-      <div v-if="best > current" class="nge-streak-tip-best nge-streak-tip-row" style="--i: 3">Your best: {{ best }} days</div>
-      <div v-else-if="current > 1" class="nge-streak-tip-best nge-streak-tip-row" style="--i: 3">🏆 Your best streak yet!</div>
-      <div v-else-if="current > 1" class="nge-streak-tip-best nge-streak-tip-row" style="--i: 3">This is your best streak yet! 🏆</div>
+      <div class="nge-streak-tip-tier nge-streak-tip-row" style="--i: 3" :style="{ '--tier-rgb': shown.rgb }">
+        <b>{{ shown.name }} flame.</b>
+        <template v-if="nextTier"> Next: {{ nextTier.name }} at {{ nextTier.days }} days, {{ nextTier.days - days }} to go.</template>
+        <template v-else> The brightest flame there is.</template>
+      </div>
+      <div v-if="bestDays > days" class="nge-streak-tip-best nge-streak-tip-row" style="--i: 4">Your best: {{ bestDays }} days</div>
+      <div v-else-if="days > 1" class="nge-streak-tip-best nge-streak-tip-row" style="--i: 4">🏆 Your best streak yet!</div>
     </div>
   </div>
 </template>
@@ -300,7 +426,82 @@ onUnmounted(() => {
   -webkit-tap-highlight-color: transparent;
 }
 .nge-streak-chip:focus-visible { box-shadow: inset 0 0 0 1px rgba(245, 166, 35, 0.6); border-radius: 6px; }
-.nge-streak-chip-fire { position: relative; display: inline-block; line-height: 1; }
+.nge-streak-chip-fire { position: relative; display: inline-block; line-height: 1; isolation: isolate; }
+
+/* ── Flame tiers (util/streak_tiers.ts). The tint is one filter over the 🔥
+      and its fire together, so the fire, its glow and the click's sparks
+      all take the tier's color. Ornaments sit outside the tint. ── */
+.nge-streak-tint { position: relative; display: inline-block; line-height: 1; z-index: 1; }
+.nge-streak-tint--kindled { filter: drop-shadow(0 0 1.5px rgba(255, 220, 120, 0.95)) saturate(1.1); }
+.nge-streak-tint--bluecore { filter: drop-shadow(0 0 1.5px rgba(150, 215, 255, 0.8)); }
+/* the white-blue heart in the belly of the flame, like a torch */
+.nge-streak-tint--bluecore::after {
+  content: ''; position: absolute; left: 50%; top: 64%; width: 66%; height: 58%;
+  translate: -50% -50%; border-radius: 50%; pointer-events: none;
+  background: radial-gradient(closest-side, rgba(225, 244, 255, 1), rgba(90, 180, 255, 0.95) 50%, rgba(60, 140, 255, 0) 100%);
+}
+.nge-streak-tint--plasma { filter: hue-rotate(168deg) saturate(1.3) brightness(1.1) drop-shadow(0 0 1.5px rgba(150, 245, 255, 0.9)); }
+.nge-streak-tint--starfire { filter: hue-rotate(238deg) saturate(1.35) brightness(1.08) drop-shadow(0 0 1.5px rgba(230, 170, 255, 0.9)); }
+.nge-streak-tint--nova { animation: nge-streak-nova 9s linear infinite; }
+@keyframes nge-streak-nova {
+  0%   { filter: hue-rotate(0deg) saturate(1.35) brightness(1.1) drop-shadow(0 0 1.5px rgba(255, 220, 245, 0.9)); }
+  100% { filter: hue-rotate(360deg) saturate(1.35) brightness(1.1) drop-shadow(0 0 1.5px rgba(255, 220, 245, 0.9)); }
+}
+.nge-streak-tint--solar { filter: saturate(1.2) brightness(1.12) drop-shadow(0 0 2px rgba(255, 236, 150, 0.95)); }
+
+/* a soft halo in the tier's light, from Kindled up */
+.nge-streak-orn-glow {
+  position: absolute; left: 50%; top: 58%; width: calc(var(--flame-px) * 1.6); height: calc(var(--flame-px) * 1.6);
+  translate: -50% -50%; border-radius: 50%; pointer-events: none; z-index: 0;
+  background: radial-gradient(closest-side, rgba(var(--tier-rgb), 0.42), rgba(var(--tier-rgb), 0.12) 55%, rgba(var(--tier-rgb), 0) 100%);
+}
+/* Solar: a ring of sun rays turning slowly behind the flame */
+.nge-streak-orn-rays {
+  position: absolute; left: 50%; top: 56%; width: calc(var(--flame-px) * 2); height: calc(var(--flame-px) * 2);
+  margin: calc(var(--flame-px) * -1) 0 0 calc(var(--flame-px) * -1);
+  border-radius: 50%; pointer-events: none; z-index: 0;
+  background: repeating-conic-gradient(rgba(255, 226, 130, 0.75) 0deg 7deg, rgba(255, 226, 130, 0) 7deg 30deg);
+  -webkit-mask: radial-gradient(closest-side, transparent 50%, #000 60%, #000 74%, transparent 100%);
+  mask: radial-gradient(closest-side, transparent 50%, #000 60%, #000 74%, transparent 100%);
+  animation: nge-streak-spin 26s linear infinite;
+}
+@keyframes nge-streak-spin { to { transform: rotate(360deg); } }
+/* Plasma and Starfire: sparks on a tilted orbit, passing in front of the
+   flame on the near side and behind it on the far side. Two eased sweeps a
+   quarter turn apart make the ellipse; z-index flips at the far side. */
+.nge-streak-orn-orbit { position: absolute; left: 50%; top: 58%; width: 0; height: 0; pointer-events: none; z-index: 0; }
+.nge-streak-orn-orbit > i {
+  position: absolute; left: 0; top: 0; --P: 3.2s;
+  animation: nge-streak-orb-x var(--P) ease-in-out calc(var(--o, 0) * var(--P) * -1) infinite,
+             nge-streak-orb-z var(--P) step-end calc(var(--o, 0) * var(--P) * -1) infinite;
+}
+.nge-streak-orn-orbit > i::before {
+  content: ''; position: absolute; width: 4px; height: 4px; margin: -2px 0 0 -2px; border-radius: 50%;
+  background: #fff; box-shadow: 0 0 3px 1px rgba(var(--tier-rgb), 1), 0 0 7px 2px rgba(var(--tier-rgb), 0.6);
+  animation: nge-streak-orb-y var(--P) ease-in-out calc(var(--o, 0) * var(--P) * -1 - var(--P) / 4) infinite;
+}
+@keyframes nge-streak-orb-x { 0%, 100% { transform: translateX(calc(var(--flame-px) * -0.68)); } 50% { transform: translateX(calc(var(--flame-px) * 0.68)); } }
+@keyframes nge-streak-orb-y { 0%, 100% { transform: translateY(calc(var(--flame-px) * -0.2)) rotate(-14deg); } 50% { transform: translateY(calc(var(--flame-px) * 0.2)); } }
+@keyframes nge-streak-orb-z { 0% { z-index: 3; } 50% { z-index: -1; } }
+/* Nova: a little crown of stars that twinkle in turn */
+.nge-streak-orn-crown { position: absolute; left: 50%; top: -3px; translate: -50% 0; display: flex; gap: 3px; z-index: 3; pointer-events: none; }
+.nge-streak-orn-crown > i {
+  font-style: normal; font-size: 7px; line-height: 1; color: #fff;
+  text-shadow: 0 0 3px rgba(255, 150, 230, 1), 0 0 6px rgba(160, 200, 255, 0.9);
+  animation: nge-streak-twinkle 2.4s ease-in-out infinite;
+}
+.nge-streak-orn-crown > i:nth-child(2) { translate: 0 -3px; font-size: 8px; animation-delay: -0.8s; }
+.nge-streak-orn-crown > i:nth-child(3) { animation-delay: -1.6s; }
+@keyframes nge-streak-twinkle { 0%, 100% { opacity: 1; scale: 1; } 50% { opacity: 0.45; scale: 0.7; } }
+
+/* the level up: the flame swells, flashes and settles as the new one */
+.nge-streak-chip--leveled .nge-streak-chip-fire { animation: nge-streak-levelup 1000ms cubic-bezier(.2, 1.5, .4, 1) both; }
+@keyframes nge-streak-levelup {
+  0% { transform: scale(1); filter: brightness(1); }
+  18% { transform: scale(1.55) translateY(1px); filter: brightness(2.2); }
+  48% { transform: scale(0.92); filter: brightness(1.3); }
+  100% { transform: scale(1); filter: none; }
+}
 /* inline-block: a transform does nothing on a plain inline span */
 .nge-streak-chip-flame { display: inline-block; font-size: var(--flame-px, 24px); line-height: 1; transform-origin: 50% 88%; will-change: transform, filter; }
 .nge-streak-chip-canvas {
@@ -322,7 +523,7 @@ onUnmounted(() => {
   line-height: 1;
   letter-spacing: -0.02em;
   pointer-events: none;
-  z-index: 1;
+  z-index: 2;
   font-weight: 900;
   color: var(--color-dark-bg, #121212);
   text-shadow:
@@ -425,8 +626,25 @@ onUnmounted(() => {
 .nge-streak-tip-bar > i { display: block; height: 100%; width: var(--fill); border-radius: 3px; background: linear-gradient(90deg, #f5a623, #ffcf7a); box-shadow: 0 0 6px rgba(245, 166, 35, 0.55); transform-origin: 0 50%; animation: nge-streak-bar 700ms cubic-bezier(.16, 1, .3, 1) 380ms both; }
 @keyframes nge-streak-bar { 0% { transform: scaleX(0); } 100% { transform: none; } }
 
+/* the card's level up line, and the flame's name in its own light */
+.nge-streak-tip-level { display: flex; align-items: baseline; gap: 8px; margin-bottom: 6px; }
+.nge-streak-tip-level-label { font-size: 10px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: rgba(var(--tier-rgb), 0.9); }
+.nge-streak-tip-level-name {
+  font-size: 17px; font-weight: 800; color: rgb(var(--tier-rgb));
+  text-shadow: 0 0 10px rgba(var(--tier-rgb), 0.75);
+  animation: nge-streak-level-name 900ms cubic-bezier(.2, 1.6, .4, 1) 260ms both;
+}
+@keyframes nge-streak-level-name { 0% { opacity: 0; transform: scale(0.6); filter: brightness(2.4); } 100% { opacity: 1; transform: none; filter: none; } }
+.nge-streak-tip-tier { margin-top: 6px; font-size: 11.5px; color: #c4d2e4; }
+.nge-streak-tip-tier b { color: rgb(var(--tier-rgb)); font-weight: 700; }
+
 /* Reduced motion: the finished card, pips lit, no fire and no sweep. */
 @media (prefers-reduced-motion: reduce) {
+  .nge-streak-orn-rays, .nge-streak-orn-crown > i, .nge-streak-tip-level-name, .nge-streak-chip--leveled .nge-streak-chip-fire { animation: none; }
+  .nge-streak-tint--nova { animation: none; filter: hue-rotate(300deg) saturate(1.35) brightness(1.1); }
+  .nge-streak-orn-orbit > i, .nge-streak-orn-orbit > i::before { animation: none; }
+  .nge-streak-orn-orbit > i { transform: translateX(calc(var(--flame-px) * 0.6)); z-index: 3; }
+  .nge-streak-orn-orbit > i[style] { transform: translateX(calc(var(--flame-px) * -0.6)); }
   .nge-streak-tip, .nge-streak-tip-row, .nge-streak-tip-brk, .nge-streak-tip-bar > i, .nge-streak-chip--stoked .nge-streak-chip-count { animation: none; }
   .nge-streak-tip-brk { opacity: 0.85; transform: translate(calc(var(--bx) * 4px), calc(var(--by) * 4px)); }
   .nge-streak-tip-beam, .nge-streak-tip-scan { display: none; }
