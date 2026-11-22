@@ -185,13 +185,14 @@
 <h2>Events</h2>
 <div class="tablewrap"><table>
   <tr><th>Event</th><th>When</th><th>What your function gets</th></tr>
-  <tr><td><code>claim</code></td><td>You claim a cell.</td><td><code>{ taskId, cellId, dataset }</code></td></tr>
+  <tr><td><code>claim</code></td><td>You claim a cell, a Cilia Quest cell included.</td><td><code>{ taskId, cellId, dataset }</code></td></tr>
   <tr><td><code>release</code></td><td>You release a claim.</td><td><code>{ taskId, cellId, dataset }</code></td></tr>
-  <tr><td><code>complete</code></td><td>You complete a cell.</td><td><code>{ taskId, cellId, dataset }</code></td></tr>
+  <tr><td><code>complete</code></td><td>You complete a cell, or submit a Cilia Quest cell.</td><td><code>{ taskId, cellId, dataset }</code></td></tr>
   <tr><td><code>cellschange</code></td><td>The selected cells change.</td><td><code>{ selected, added, removed }</code></td></tr>
   <tr><td><code>datasetchange</code></td><td>You switch datasets.</td><td><code>{ dataset }</code></td></tr>
   <tr><td><code>viewchange</code></td><td>Anything in the view changes, such as moving.</td><td><code>{ position }</code></td></tr>
 </table></div>
+<p>For a Cilia Quest cell, <code>taskId</code> is <code>null</code> and the event also carries <code>kind: 'quest'</code>.</p>
 <p class="muted">Annotations your script adds are not counted in the Annotations number on your profile.</p>
 
 <h2>Example: a panel of your selected cells</h2>

@@ -12,6 +12,7 @@
  */
 import { reactive } from 'vue';
 import { functionUrl } from './functions_base';
+import { emitScriptEvent } from './script_api';
 import { supabase } from './supabase';
 import { makeLayer } from 'neuroglancer/layer';
 import { parseRGBColorSpecification } from 'neuroglancer/util/color';
@@ -148,10 +149,26 @@ async function writing<T>(write: Promise<T>): Promise<T> {
 export function questOpenCount(): number {
   return questState.counts?.open ?? questState.rows.filter(r => !r.annotator && !r.status).length;
 }
-export async function claimQuest(segmentId: string) { return writing(call('quest_claim', { segmentId })); }
-export async function releaseQuest(segmentId: string) { return writing(call('quest_release', { segmentId })); }
+/** Player scripts hear quest claims, releases and submits like cell ones
+ *  (toknow #611: a Cilia Quest claim sent no claim event). taskId is null:
+ *  a quest cell has no task; kind says it is a quest. */
+function tellScripts(event: 'claim' | 'release' | 'complete', segmentId: string) {
+  emitScriptEvent(event, { taskId: null, cellId: String(segmentId), dataset: QUEST_DATASET, kind: 'quest' });
+}
+export async function claimQuest(segmentId: string) {
+  const out = await writing(call('quest_claim', { segmentId }));
+  tellScripts('claim', segmentId);
+  return out;
+}
+export async function releaseQuest(segmentId: string) {
+  const out = await writing(call('quest_release', { segmentId }));
+  tellScripts('release', segmentId);
+  return out;
+}
 export async function submitQuest(segmentId: string, done: { status: string; splitMerged: string; link: string; notes: string }) {
-  return writing(call('quest_submit', { segmentId, ...done }));
+  const out = await writing(call('quest_submit', { segmentId, ...done }));
+  tellScripts('complete', segmentId);
+  return out;
 }
 
 /**
