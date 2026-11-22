@@ -6,7 +6,7 @@
  */
 import { ref, computed, watch, onMounted } from 'vue';
 import { storeToRefs } from 'pinia';
-import { useSegmentAnnotationStore, useUserStatsStore, useCellHistoryStore, useHelpRequestStore } from '../store';
+import { useSegmentAnnotationStore, useCellHistoryStore, useHelpRequestStore } from '../store';
 import { getCellStatus, setCellComplete, saveCellType, CellStatus, getLastCompletionProblem, getLastCellTypeProblem } from '../widgets/lightbulb_service';
 import { getChangeLog, ChangeLogSummary } from '../widgets/pcg_service';
 import { currentSegLayerName, currentCellTypes, cellTypeLabel as typeLabel } from '../datasets';
@@ -14,7 +14,6 @@ import { planMenuCompletion, finishMenuCompletion, needsCompletionDetails } from
 import { askCompletionDetails, type CompletionDetails } from '../util/completion_details';
 
 const annotStore = useSegmentAnnotationStore();
-const statsStore = useUserStatsStore();
 const historyStore = useCellHistoryStore();
 const helpStore = useHelpRequestStore();
 
@@ -171,9 +170,9 @@ async function toggleComplete() {
       isComplete: willBeComplete,
       annotationId: willBeComplete ? annotation.value.annotationId : undefined,
     });
-    if (willBeComplete) {
-      statsStore.setStats({ cellsSubmitted: statsStore.stats.cellsSubmitted + 1 });
-    }
+    // No count here: setCellComplete already adds the cell (and the server's
+    // count follows). A second +1 read one cell ahead and gave out Safety
+    // Goggles at 29 cells (synapse123, report 616).
     // Record in cell history
     historyStore.upsert({
       segId: activeSegId.value!,

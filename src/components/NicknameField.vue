@@ -23,10 +23,11 @@ const props = defineProps<{
 const text = ref('');
 const state = ref<'' | 'saving' | 'saved' | 'local'>('');
 function current() { return nicknameOf(props.segKey) || [...(props.ids || [])].map(i => nicknameOf(i)).find(Boolean) || ''; }
-watch(() => props.segKey, () => { flush(); text.value = current(); state.value = ''; }, { immediate: true });
-
+// Declared before the immediate watch below, which calls flush() at once
+// (synapse123 report 616, Nseraf 617: "Cannot access before initialization").
 let timer: ReturnType<typeof setTimeout> | undefined;
 let pendingKey = '';
+watch(() => props.segKey, () => { flush(); text.value = current(); state.value = ''; }, { immediate: true });
 function onInput() {
   pendingKey = props.segKey;
   state.value = 'saving';

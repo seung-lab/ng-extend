@@ -273,9 +273,11 @@ async function addPiece() {
     const at = await cellAtCrosshair();
     if (active.value?.id !== row.id) return;
     if (!at.root) { pieces.msg = at.problem || 'There is no cell under the crosshairs.'; pieces.err = true; return; }
-    const mineNow = at.root === shownRoot.value || at.root === row.id
-      || !!(await ancestorAmong(at.root, [shownRoot.value, row.id].filter(Boolean) as string[]).catch(() => undefined));
-    if (active.value?.id !== row.id) return;
+    // Only the fragment's own cell (step 1's) is refused. Not its edit
+    // history: every cell the fragment was split into or merged into has the
+    // fragment in its history, and those are the cells this list is for
+    // (Nseraf, report 617: every other cell was refused).
+    const mineNow = at.root === shownRoot.value || at.root === row.id;
     if (mineNow) { pieces.msg = 'The crosshairs are in the fragment itself. Put them in one of the other cells.'; pieces.err = true; return; }
     if (pieces.list.some(p => p.root === at.root)) { pieces.msg = 'That cell is already on the list.'; pieces.err = true; return; }
     const p: FragmentPiece = { root: at.root, pt: at.position, cellType: '', cellTypeCustom: '' };
