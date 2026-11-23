@@ -868,7 +868,7 @@ onUnmounted(() => {
 .lm-legend i { width: 14px; height: 14px; border-radius: 3px; background: var(--c); box-shadow: 0 0 10px var(--c); }
 
 /* Datasets */
-.lm-ring { position: relative; width: min(64cqh, 70cqw); height: min(64cqh, 70cqw); margin-top: 2cqh; }
+.lm-ring { position: relative; width: min(58cqh, 66cqw); height: min(58cqh, 66cqw); margin-top: 1cqh; }
 .lm-ring::before { content: ''; position: absolute; inset: 12%; border-radius: 50%; border: 2px dashed rgba(159, 220, 255, .25); animation: lm-spin 40s linear infinite; }
 .lm-ring-core { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); text-align: center; }
 .lm-ring-n { font: 900 clamp(70px, 9cqh, 130px)/1 Orbitron, Inter, sans-serif; color: #fff; text-shadow: 0 0 30px rgba(90, 200, 255, .8); }
@@ -876,7 +876,7 @@ onUnmounted(() => {
 .lm-orbit { position: absolute; left: 50%; top: 50%; width: 0; height: 0; transform: rotate(var(--a)); animation: lm-orbit 50s linear infinite; }
 @keyframes lm-orbit { from { transform: rotate(var(--a)); } to { transform: rotate(calc(var(--a) + 360deg)); } }
 .lm-planet {
-  position: absolute; left: calc(min(32cqh, 35cqw) * .76); top: 0; width: 180px; margin: -70px 0 0 -90px; text-align: center;
+  position: absolute; left: calc(min(29cqh, 33cqw) * .76); top: 0; width: 180px; margin: -70px 0 0 -90px; text-align: center;
   transform: rotate(calc(-1 * var(--a))); animation: lm-counter 50s linear infinite, lm-planet-in .9s cubic-bezier(.2, 1.5, .4, 1) var(--d) both;
 }
 @keyframes lm-counter { from { rotate: 0deg; } to { rotate: -360deg; } }
