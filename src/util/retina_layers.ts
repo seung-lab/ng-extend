@@ -139,7 +139,16 @@ export function addRetinaAnnotationLayers(taskId: string | null, startLink?: str
   const byKey = new Map<string, any>();
   for (const s of [...fromLink, ...specs]) byKey.set(layerKey(s.name), s);  // kept-aside copies win
   // Any of the five the start link did not have is added empty.
-  for (const name of RETINA_ANNOTATION_LAYERS) if (!byKey.has(layerKey(name))) byKey.set(layerKey(name), { type: 'annotation', source: 'local://annotations', annotations: [], name });
+  // With the view's own dimensions and the point tool on, as the + by the
+  // layer tabs makes one. A bare source takes its dimensions from the view at
+  // the moment it loads, and a layer added while the view is still loading
+  // got none: its points had no position (report 618).
+  const space = (viewer as any).coordinateSpace?.value;
+  const outputDimensions: Record<string, [number, string]> | undefined = space?.rank
+    ? Object.fromEntries((space.names as string[]).map((n, i) => [n, [space.scales[i], space.units[i]]]))
+    : undefined;
+  const source = outputDimensions ? { url: 'local://annotations', transform: { outputDimensions } } : 'local://annotations';
+  for (const name of RETINA_ANNOTATION_LAYERS) if (!byKey.has(layerKey(name))) byKey.set(layerKey(name), { type: 'annotation', source, tool: 'annotatePoint', annotations: [], name });
   const onScreen = new Set((viewer.layerManager.managedLayers as any[]).filter(l => !l.archived).map(l => layerKey(l.name)));
   let added = 0;
   for (const name of RETINA_ANNOTATION_LAYERS) {

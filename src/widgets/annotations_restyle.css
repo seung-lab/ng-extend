@@ -743,3 +743,6 @@ textarea.neuroglancer-annotation-details-description:focus {
 .nge-ann-note-pop-save:hover { background: #ffe27a; }
 .nge-ann-note-pop-cancel { color: #b8c2d8; background: none; border: 1px solid rgba(255, 255, 255, 0.18); }
 .nge-ann-note-pop-cancel:hover { color: #fff; border-color: rgba(255, 255, 255, 0.35); }
+
+/* An empty layer's how-to (Kim Fenley, report 618). */
+.nge-ann-empty-hint { margin: 6px 8px 4px; padding: 8px 10px; border-radius: 7px; border: 1px dashed rgba(79, 207, 255, 0.35); color: #a9cfe6; font: 400 12px/1.45 'Inter', system-ui, sans-serif; }

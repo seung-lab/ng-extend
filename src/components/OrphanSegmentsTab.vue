@@ -61,7 +61,7 @@ const HOWTO_LINES = [
   '<b>Crosshairs.</b> Put the crosshairs inside the thickest dendrite, or inside the soma if it has one, then press Use crosshairs. Pyr checks the point is inside this fragment.',
   '<b>Part of it belongs to another cell?</b> Cut it off and merge it into its own cell. If that cell is already proofread, you are done with it. If not, proofread it too, or stash it for later so anyone can pick it up. Never merge into an unrelated cell to get rid of a piece, and never delete anything.',
   'After 5 fragments, Pyr trusts you on 1 and 2 and stops asking.',
-  '<b>Highlight</b> opens Highlight mode to mark what you checked: with Merge or Cut open, Ctrl+click goes to them and H+click highlights.',
+  '<b>Highlight</b> opens Highlight mode to mark what you checked: with Merge or Cut open, Ctrl+click goes to them and H+click highlights. Lost Fragments use Highlight, so no annotation layers are needed.',
 ];
 /** The top bar's Highlight can, in place of the word (Ames 2026-11-20). */
 const HIGHLIGHT_ICON = getToolbarIconDef('highlight')?.svg ?? '';

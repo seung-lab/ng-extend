@@ -210,6 +210,7 @@ export class AnnotationLayerView extends Tab {
   private previousHoverId: string|undefined = undefined;
   /** EyeWire II: "12 annotations", beside Show through cells in 3D. */
   private ngeCountEl: HTMLElement|undefined = undefined;
+  private ngeEmptyHint: HTMLElement|undefined = undefined;
   private previousHoverAnnotationLayerState: AnnotationLayerState|undefined = undefined;
 
   private virtualListSource: VirtualListSource = {
@@ -735,6 +736,13 @@ export class AnnotationLayerView extends Tab {
     this.element.appendChild(listTools);
 
     this.element.appendChild(this.headerRow);
+    // nge: an empty layer says how to add one. A plain click only moves the
+    // crosshairs (Kim Fenley, report 618: she clicked spots and waited for
+    // their coordinates to show here).
+    const emptyHint = this.ngeEmptyHint = document.createElement('div');
+    emptyHint.className = 'nge-ann-empty-hint';
+    emptyHint.textContent = 'Hold Ctrl and click in the view to add a point here. A plain click only moves the crosshairs.';
+    this.element.appendChild(emptyHint);
     const {virtualList} = this;
     virtualList.element.classList.add('neuroglancer-annotation-list');
     this.element.appendChild(virtualList.element);
@@ -1049,6 +1057,8 @@ export class AnnotationLayerView extends Tab {
     this.virtualListSource.length = this.listElements.length;
     const length = this.ngeAllAnnotations.length;
     if (this.ngeCountEl) this.ngeCountEl.textContent = `${length.toLocaleString()} ${length === 1 ? 'annotation' : 'annotations'}`;
+    // Only on a layer points can be added to (a local one), not a read only list.
+    if (this.ngeEmptyHint) this.ngeEmptyHint.style.display = length || !(this.layer as any).localAnnotations ? 'none' : '';
   }
 
   private addAnnotationElement(annotation: Annotation, state: AnnotationLayerState) {

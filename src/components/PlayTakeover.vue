@@ -58,6 +58,12 @@ watch(waiting, n => {
 const words = computed(() => String(current.value?.body || '')
   .split('\n').filter(l => !l.includes(PLAY_LINK)).join('\n').trim());
 const paragraphs = computed(() => words.value.split(/\n\s*\n/).map(p => p.trim()).filter(Boolean));
+/** A paragraph with its **bold** shown bold (the Lost Fragments 2.0 one showed
+ *  the stars, 2026-11-23). Everything is escaped first, so nothing else is HTML. */
+function boldOnly(p: string): string {
+  const esc = p.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+  return esc.replace(/\*\*([^*]+?)\*\*/g, '<b>$1</b>');
+}
 
 function close() {
   if (current.value) backend.markNotificationRead(current.value.id);
@@ -97,7 +103,7 @@ watch(current, c => {
           </button>
           <div class="nge-tk-text">
             <h2 class="nge-tk-title">{{ current.title }}</h2>
-            <p v-for="(p, i) in paragraphs" :key="i" class="nge-tk-p">{{ p }}</p>
+            <p v-for="(p, i) in paragraphs" :key="i" class="nge-tk-p" v-html="boldOnly(p)"></p>
           </div>
           <div v-if="blocked" class="nge-tk-blocked" role="alert">
             <b>Lost Fragments is open to players with edit access on Retina.</b>
