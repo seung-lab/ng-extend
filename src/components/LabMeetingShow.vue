@@ -23,12 +23,11 @@ import embMec from '../images/datasets/mec.png';
 import embFly from '../images/datasets/flywire.png';
 import embBanc from '../images/datasets/banc.png';
 import embCa3 from '../images/datasets/ca3.png';
-import { ensureIntroStyle } from '../util/intro_tour';
+import { ensureIntroStyle, introFrameSvg } from '../util/intro_tour';
 import { createNeuronLayer, loadNeuronPoints, projectNeuron, type NeuronLayer } from '../util/lab_neuron';
 import icoChat from '../../static/badges/pyr/center-art/exploration/radar-dish.png';
 import icoAch from '../../static/badges/pyr/center-art/loyalty/second-spark.png';
 import icoBug from '../../static/badges/pyr/center-art/exploration/magnifying-glass.png';
-import icoStreak from '../../static/badges/pyr/center-art/loyalty/steady-signal.png';
 import icoShip from '../../static/badges/pyr/center-art/exploration/rocket.png';
 import { LabStats, SNAPSHOT, loadLabStats } from '../util/lab_meeting_stats';
 
@@ -39,7 +38,7 @@ const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
 const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // ── Scenes ──────────────────────────────────────────────────────────────────
-type SceneId = 'intro' | 'players' | 'tutorials' | 'edits' | 'cells' | 'datasets' | 'community' | 'finale';
+type SceneId = 'intro' | 'players' | 'tutorials' | 'edits' | 'cells' | 'datasets' | 'community' | 'streaks' | 'finale';
 interface Scene { id: SceneId; ms: number; pose: string; say: () => string; hue: [string, string, string]; }
 const SCENES: Scene[] = [
   { id: 'intro', ms: 15000, pose: nurroSuper, hue: ['#2a6bff', '#9b5cff', '#18d4ff'],
@@ -56,6 +55,8 @@ const SCENES: Scene[] = [
     say: () => 'So many brains to explore!' },
   { id: 'community', ms: 21000, pose: nurroPopcorn, hue: ['#b45cff', '#ff5c9a', '#ffcf4a'],
     say: () => 'Best crew in the galaxy!' },
+  { id: 'streaks', ms: 17000, pose: nurroCool, hue: ['#ff9f5a', '#ff5c9a', '#ffcf4a'],
+    say: () => `${(stats.value.streaks[0]?.name ?? 'Our top tester').split(' ')[0]} is on fire!` },
   { id: 'finale', ms: 0, pose: nurroParty, hue: ['#ff5c9a', '#ffcf4a', '#2a9dff'],
     say: () => 'See you there!' },
 ];
@@ -93,6 +94,8 @@ function count(to: number, delay = 0, dur = 2200, from = 0) {
   return fmt(from + (to - from) * q);
 }
 const after = (ms: number) => reduced || t.value >= ms;
+/** Days since alpha opened on September 28, 2026. */
+const daysSinceAlpha = Math.max(1, Math.floor((Date.now() - new Date(2026, 8, 28).getTime()) / 86400000));
 /** A line split into words and letters, each letter lighting up in turn. */
 function lettered(words: { word: string; cls: string }[], step = 45) {
   let n = 0;
@@ -120,6 +123,12 @@ const tutorialBars = computed(() => {
   const rows = stats.value.tutorials.slice(0, 9);
   const max = Math.max(1, ...rows.map(r => r.players));
   return rows.map((r, i) => ({ ...r, w: r.players / max, d: 600 + i * 260, c: MONTH_COLORS[(i * 2 + 3) % MONTH_COLORS.length] }));
+});
+/** The streak board: each tester's longest run of days in a row. */
+const streakBars = computed(() => {
+  const rows = stats.value.streaks;
+  const max = Math.max(1, ...rows.map(r => r.days));
+  return rows.map((r, i) => ({ ...r, w: r.days / max, d: 900 + i * 280 }));
 });
 const moreTutorials = computed(() => Math.max(0, stats.value.tutorials.length - 9));
 
@@ -190,7 +199,6 @@ const tiles = computed(() => {
     { icon: icoChat, n: s.chats, label: 'chat messages' },
     { icon: icoAch, n: s.achievements, label: 'achievements earned' },
     { icon: icoBug, n: s.reports, label: 'bug reports and ideas from players' },
-    { icon: icoStreak, n: s.topStreak, label: 'day longest streak' },
   ];
   if (s.deploys) out.push({ icon: icoShip, n: s.deploys, label: 'updates shipped to players' });
   return out;
@@ -201,6 +209,9 @@ const sky = ref<HTMLCanvasElement | null>(null);
 const root = ref<HTMLElement | null>(null);
 /** The popup itself: everything is laid out and drawn inside it. */
 const stage = ref<HTMLElement | null>(null);
+/** The circuit frame from the Play popup (intro_tour.ts), drawn to the popup's size, a little larger in scale. */
+const frameHost = ref<HTMLElement | null>(null);
+const FRAME_SCALE = 1.6;
 /** A real MICrONS neuron turning behind everything (Ames: "Need a neuron rotating in the background"). */
 const neuronCv = ref<HTMLCanvasElement | null>(null);
 let neuron: NeuronLayer | null = null, neuronAng = 0.4, neuronIn = 0, neuronShift = 0;
@@ -227,6 +238,7 @@ function resize() {
   dpr = Math.min(2, devicePixelRatio || 1);
   W = stage.value?.clientWidth || innerWidth; H = stage.value?.clientHeight || innerHeight;
   cv.width = W * dpr; cv.height = H * dpr;
+  if (frameHost.value) frameHost.value.innerHTML = introFrameSvg(W / FRAME_SCALE, H / FRAME_SCALE, 18);
   neuron?.resize();
 }
 function newStar(far = false): Star {
@@ -408,7 +420,8 @@ const BURSTS: Partial<Record<SceneId, [number, string][]>> = {
   edits: [[3200, '.lm-curve-end']],
   cells: [[2600, '.lm-big']],
   datasets: [[1400, '.lm-ring-core']],
-  community: [[2200, '.lm-tile:nth-child(1)'], [2700, '.lm-tile:nth-child(2)'], [3200, '.lm-tile:nth-child(3)'], [3700, '.lm-tile:nth-child(4)'], [4200, '.lm-tile:nth-child(5)'], [4700, '.lm-tile:nth-child(6)']],
+  community: [[2200, '.lm-tile:nth-child(1)'], [2700, '.lm-tile:nth-child(2)'], [3200, '.lm-tile:nth-child(3)'], [3700, '.lm-tile:nth-child(4)']],
+  streaks: [[2400, '.lm-big']],
   finale: [[900, '.lm-finale-date'], [2400, '.lm-finale-date']],
 };
 let fired = new Set<string>();
@@ -474,7 +487,8 @@ onUnmounted(() => {
 
 <template>
   <div ref="root" class="lm-root" :class="{ 'lm-reduced': reduced }" @mousemove="poke" @click="poke">
-   <div ref="stage" class="lm-stage">
+   <div ref="stage" class="lm-stage nge-intro--in">
+    <span class="lm-stage-bg" /><span ref="frameHost" class="nge-frame-host lm-frame" /><span class="nge-intro-ring" /><span class="nge-intro-scan" />
     <canvas ref="neuronCv" class="lm-neuron" aria-hidden="true" />
     <canvas ref="sky" class="lm-sky" aria-hidden="true" />
 
@@ -599,7 +613,25 @@ onUnmounted(() => {
         </div>
       </section>
 
-      <!-- 8. See you December 7 -->
+      <!-- 8. Streaks -->
+      <section v-else-if="scene.id === 'streaks'" key="streaks" class="lm-scene lm-split lm-split--wide">
+        <div class="lm-copy">
+          <div class="lm-kicker on">Daily streaks</div>
+          <div class="lm-big lm-big--fire">{{ count(stats.streaks[0]?.days ?? 0, 600, 1800) }}</div>
+          <div class="lm-label">days in a row, and counting</div>
+          <div class="lm-line" :class="{ on: after(2600) }">Alpha opened <b>{{ daysSinceAlpha }}</b> days ago</div>
+        </div>
+        <div class="lm-bars lm-bars--fire">
+          <div v-for="b in streakBars" :key="b.name" class="lm-bar" :class="{ on: after(b.d) }">
+            <span class="lm-bar-name">{{ b.name }}</span>
+            <span class="lm-bar-track"><span class="lm-bar-fill" :style="{ width: after(b.d) ? `${Math.max(4, b.w * 100)}%` : '0%' }" /><i v-if="b.live" class="lm-live" :style="{ left: `${Math.max(4, b.w * 100)}%` }" /></span>
+            <span class="lm-bar-n">{{ count(b.days, b.d, 1400) }}</span>
+          </div>
+          <div class="lm-bar-more lm-live-key" :class="{ on: after(900 + streakBars.length * 280) }"><i class="lm-live lm-live--key" /> still going today</div>
+        </div>
+      </section>
+
+      <!-- 9. See you December 7 -->
       <section v-else key="finale" class="lm-scene lm-center">
         <div class="lm-kicker on">Want the full tour?</div>
         <div class="lm-finale-join" :class="{ on: after(400) }">Join lab meeting</div>
@@ -658,11 +690,16 @@ onUnmounted(() => {
 .lm-stage {
   position: relative; overflow: hidden; container-type: size;
   width: min(92vw, 163vh); height: min(51.75vw, 92vh);
-  border-radius: 26px; background: linear-gradient(160deg, rgba(8, 16, 48, .62), rgba(5, 10, 31, .5));
-  border: 1px solid rgba(140, 210, 255, .4);
-  box-shadow: 0 0 0 1px rgba(255, 255, 255, .04) inset, 0 0 60px rgba(70, 160, 255, .35), 0 30px 90px rgba(0, 0, 0, .45);
+  isolation: isolate; filter: drop-shadow(0 0 40px rgba(70, 160, 255, .28));
   animation: lm-pop-in .8s cubic-bezier(.2, 1.3, .4, 1) both;
 }
+/* The glass, cut at two corners like Pyr's transmission boxes. */
+.lm-stage-bg { position: absolute; inset: 0; z-index: -2; pointer-events: none;
+  clip-path: polygon(29px 0, 100% 0, 100% calc(100% - 29px), calc(100% - 29px) 100%, 0 100%, 0 29px);
+  background: linear-gradient(160deg, rgba(8, 16, 48, .62), rgba(5, 10, 31, .5) 60%, rgba(22, 14, 48, .55)); }
+.lm-stage-bg::after { content: ''; position: absolute; inset: 0; opacity: .35; background: repeating-linear-gradient(0deg, rgba(126, 224, 255, .05) 0 1px, transparent 1px 3px); }
+.lm-stage .lm-frame :deep(svg) { width: 100%; height: 100%; }
+.lm-stage .nge-intro-ring, .lm-stage .nge-intro-scan { z-index: 3; }
 @keyframes lm-fade { from { opacity: 0; } }
 @keyframes lm-pop-in { from { opacity: 0; transform: scale(.85); } }
 .lm-sky { position: absolute; inset: 0; width: 100%; height: 100%; }
@@ -758,6 +795,14 @@ onUnmounted(() => {
 .lm-bar-n { font: 700 clamp(16px, 1.5cqw, 26px) Orbitron, Inter, sans-serif; font-variant-numeric: tabular-nums; }
 .lm-bar-more { margin-left: calc(34% + 16px); font: 500 clamp(13px, 1.1cqw, 18px) Inter, sans-serif; color: #9fbfe6; opacity: 0; transition: opacity .6s; }
 .lm-bar-more.on { opacity: 1; }
+/* Streaks: flame colored bars, a live spark on the ones still going */
+.lm-bars--fire .lm-bar-fill { --c: #ff8a4a; background: linear-gradient(90deg, #ff5c9a, #ff9f5a 60%, #ffe08a); box-shadow: 0 0 18px rgba(255, 140, 80, .7); }
+.lm-bars--fire .lm-bar-track { position: relative; overflow: visible; }
+.lm-live { position: absolute; top: 50%; width: 12px; height: 12px; margin: -6px 0 0 -6px; border-radius: 50%; background: #fff6c8;
+  box-shadow: 0 0 10px #ffd36a, 0 0 22px #ff8a4a; animation: lm-live 1.2s ease-in-out infinite; transition: left 1.4s cubic-bezier(.2, .9, .2, 1); }
+.lm-live--key { position: relative; display: inline-block; top: 0; margin: 0 8px 0 0; vertical-align: -1px; }
+@keyframes lm-live { 50% { transform: scale(1.35); box-shadow: 0 0 16px #ffd36a, 0 0 34px #ff8a4a; } }
+.lm-big--fire { background: linear-gradient(180deg, #fff6c8, #ffb45a); -webkit-background-clip: text; background-clip: text; filter: drop-shadow(0 0 26px rgba(255, 150, 80, .6)); }
 
 /* Edits */
 .lm-head { text-align: center; }
@@ -809,7 +854,7 @@ onUnmounted(() => {
 .lm-ring-foot { margin-top: 1cqh; }
 
 /* Community */
-.lm-tiles { display: grid; grid-template-columns: repeat(6, minmax(110px, 1fr)); gap: 2.2cqh 2cqw; width: min(80cqw, 1300px); margin-top: 2cqh; }
+.lm-tiles { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 2.2cqh 2cqw; width: min(80cqw, 1300px); margin-top: 2cqh; }
 .lm-tile {
   display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 2.4cqh 1cqw; border-radius: 22px;
   background: linear-gradient(160deg, rgba(255, 255, 255, .1), rgba(255, 255, 255, .03)); border: 1px solid rgba(255, 255, 255, .16);
@@ -817,8 +862,6 @@ onUnmounted(() => {
   opacity: 0; transform: translateY(30px) scale(.9); transition: all .7s cubic-bezier(.2, 1.4, .4, 1);
 }
 .lm-tile.on { opacity: 1; transform: none; }
-.lm-tile { grid-column: span 2; }
-.lm-tile:nth-child(4) { grid-column: 2 / span 2; }
 .lm-tile-icon { width: clamp(48px, 7cqh, 84px); height: auto; filter: drop-shadow(0 0 14px rgba(110, 200, 255, .45)); }
 .lm-tile b { font: 800 clamp(34px, 3.6cqw, 64px) Orbitron, Inter, sans-serif; font-variant-numeric: tabular-nums; color: #fff; text-shadow: 0 0 18px rgba(90, 200, 255, .6); }
 .lm-tile span:last-child { font: 600 clamp(13px, 1.15cqw, 20px) Inter, sans-serif; color: #cfe3ff; text-align: center; }
