@@ -632,6 +632,7 @@ onUnmounted(() => {
           </div>
         </div>
         <div class="lm-line on lm-ring-foot" :class="{ on: after(2600) }">plus <b>{{ fmt(stats.byDataset.sandbox) }}</b> practice edits in the training sandbox</div>
+        <div class="lm-line lm-ring-foot2" :class="{ on: after(3600) }">plus view access to all public connectomics datasets</div>
       </section>
 
       <!-- 7. Community -->
@@ -884,6 +885,7 @@ onUnmounted(() => {
 .lm-planet b { display: block; font: 700 clamp(14px, 1.2cqw, 20px) Inter, sans-serif; margin-top: 4px; }
 .lm-planet span { display: block; font: 500 clamp(12px, 1cqw, 16px) Inter, sans-serif; color: #ffcf4a; }
 .lm-ring-foot { margin-top: 1cqh; }
+.lm-ring-foot2 { margin-top: .6cqh; }
 
 /* Community */
 .lm-tiles { display: grid; grid-template-columns: repeat(4, minmax(150px, 1fr)); gap: 2.2cqh 2cqw; width: min(80cqw, 1300px); margin-top: 2cqh; }
