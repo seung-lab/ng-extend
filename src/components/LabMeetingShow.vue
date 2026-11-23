@@ -26,7 +26,7 @@ import embCa3 from '../images/datasets/ca3.png';
 import { ensureIntroStyle, introFrameSvg } from '../util/intro_tour';
 import { createNeuronLayer, loadNeuronPoints, projectNeuron, type NeuronLayer } from '../util/lab_neuron';
 import icoChat from '../../static/badges/pyr/center-art/exploration/radar-dish.png';
-import icoAch from '../../static/badges/pyr/center-art/loyalty/constellation-crown.png';
+import icoAch from '../../static/images/champions/gold-award.png';
 import icoBug from '../../static/badges/pyr/center-art/exploration/magnifying-glass.png';
 import icoShip from '../../static/badges/pyr/center-art/exploration/planetary-lander.png';
 import { LabStats, SNAPSHOT, loadLabStats } from '../util/lab_meeting_stats';
