@@ -76,7 +76,7 @@ export const SNAPSHOT: LabStats = {
   reports: 677,
   topStreak: 46,
   playerDays: 636,
-  tutorialsDone: 444,
+  tutorialsDone: 194,
   tutorialPlayers: 57,
   tutorials: tutorialRows(SNAPSHOT_TUTORIALS),
   months: MONTHS,
@@ -136,7 +136,7 @@ export async function loadLabStats(): Promise<LabStats> {
     last.cells = Math.max(0, s.cells - sum('cells'));
 
     const t = (tuts as any)?.data as { tutorial: number; user_id: string }[] | undefined;
-    if (t && t.length >= SNAPSHOT.tutorialsDone) {
+    if (t && t.length) {
       const per = new Map<number, Set<string>>(), all = new Set<string>();
       for (const r of t) {
         if (!per.has(r.tutorial)) per.set(r.tutorial, new Set());
@@ -145,7 +145,9 @@ export async function loadLabStats(): Promise<LabStats> {
       const counts: Record<number, number> = {};
       per.forEach((v, k) => { if (NAMES[k]) counts[k] = v.size; });
       s.tutorials = tutorialRows(counts);
-      s.tutorialsDone = t.length;
+      // Each player once per tutorial: replays are not new finishes (Ames 2026-11-23: 448 rows, 194 real).
+      let pairs = 0; per.forEach(v => { pairs += v.size; });
+      s.tutorialsDone = pairs;
       s.tutorialPlayers = all.size;
     }
     const n = (x: unknown) => (x as any)?.count as number | null | undefined;

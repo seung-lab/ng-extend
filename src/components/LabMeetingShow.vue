@@ -543,8 +543,9 @@ onUnmounted(() => {
         <div>
           <div class="lm-kicker on">The crew</div>
           <div class="lm-big">{{ count(stats.editors, 600, 2400) }}</div>
-          <div class="lm-label">players have made proofreading edits</div>
-          <div class="lm-line" :class="{ on: after(3600) }">Alpha testing began <b>September 28</b></div>
+          <div class="lm-label">alpha testers</div>
+          <div class="lm-line" :class="{ on: after(3000) }">each made at least one proofreading edit</div>
+          <div class="lm-line lm-line--low" :class="{ on: after(4400) }">Alpha testing began <b>September 28</b></div>
         </div>
       </section>
 
@@ -789,6 +790,7 @@ onUnmounted(() => {
 .lm-line { margin-top: 2.4cqh; font: 500 clamp(16px, 1.5cqw, 26px) Inter, sans-serif; color: #cfe3ff; opacity: 0; transform: translateY(10px); transition: all .8s; }
 .lm-line b { color: #ffcf4a; font-family: Orbitron, Inter, sans-serif; }
 .lm-line.on { opacity: 1; transform: none; }
+.lm-line--low { margin-top: 6cqh; font-size: clamp(14px, 1.25cqw, 22px); color: #a9c6ea; }
 .lm-para { margin-top: 2.2cqh; max-width: 34em; font: 500 clamp(15px, 1.35cqw, 24px)/1.5 Inter, sans-serif; color: #dbeaff; opacity: 0; transform: translateY(10px); transition: all .8s; }
 .lm-para.on { opacity: 1; transform: none; }
 .lm-copy--narrow { flex-basis: 34%; }
