@@ -347,9 +347,9 @@ onUnmounted(() => { document.removeEventListener('keydown', onKey, true); frameO
 .nge-play-btn:hover .nge-play-label::after, .nge-play-btn:focus-visible .nge-play-label::after { transform: scaleX(1); }
 .nge-play-btn:active { transform: translateY(1px) scale(0.98); }
 .nge-play-btn:focus-visible { outline: 2px solid #5ef0c6; outline-offset: 4px; }
-/* The Sandbox: larger, with a slow glow, so a new player sees where to start. */
+/* The Sandbox: larger, so a new player sees where to start. No idle pulse (Ames 2026-11-23: "remove the pulsing glow on the play button"). */
 .nge-play-dock--big { top: 80px; left: 14px; }
-.nge-play-dock--big .nge-play-btn { --h: 52px; --cut: 9px; animation: nge-play-glow 2.6s ease-in-out infinite; }
+.nge-play-dock--big .nge-play-btn { --h: 52px; --cut: 9px; }
 .nge-play-dock--big .nge-play-label { font-size: 17px; padding: 0 28px 0 22px; }
 @keyframes nge-play-glow { 50% { filter: drop-shadow(0 0 18px rgba(94, 240, 198, 0.8)); } }
 @media (prefers-reduced-motion: reduce) { .nge-play-dock--big .nge-play-btn, .nge-play-key::after { animation: none !important; } }

@@ -2,6 +2,13 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-23T16:00:00Z",
+      "title": "A steady Play button",
+      "items": [
+        "The big Play button in the Sandbox no longer pulses. It still glows when you point at it."
+      ]
+    },
+    {
       "at": "2026-11-23T15:40:00Z",
       "title": "Nicknames that show, and fairer counts",
       "items": [
