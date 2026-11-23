@@ -113,7 +113,8 @@ const TAGLINE = [
 const spoken = computed(() => {
   const s = scene.value.say();
   if (reduced) return s;
-  const n = Math.floor(clamp01((t.value - (scene.value.id === 'nurro' ? 1300 : 1700)) / (s.length * 32)) * s.length);
+  const meet = scene.value.id === 'nurro';
+  const n = Math.floor(clamp01((t.value - (meet ? 650 : 1700)) / (s.length * (meet ? 12 : 32))) * s.length);
   return s.slice(0, n);
 });
 
@@ -549,7 +550,7 @@ onUnmounted(() => {
       <!-- 1b. Meet Nurro -->
       <section v-else-if="scene.id === 'nurro'" key="nurro" class="lm-scene lm-center lm-meet">
         <img class="lm-meet-pic" :src="nurroSuper" alt="" draggable="false" />
-        <div class="lm-meet-bubble" :class="{ on: after(900) }">{{ spoken || '\u00a0' }}</div>
+        <div class="lm-meet-bubble" :class="{ on: after(450) }">{{ spoken || '\u00a0' }}</div>
       </section>
 
       <!-- 2. Players -->
@@ -950,20 +951,20 @@ onUnmounted(() => {
   opacity: 0; transition: opacity .6s;
 }
 /* Round glass keys with icons, Pyr's cyan edge, a glow on hover. */
-.lm-ikey { all: unset; box-sizing: border-box; cursor: pointer; display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%;
+.lm-ikey { all: unset; box-sizing: border-box; cursor: pointer; display: grid; place-items: center; width: 30px; height: 30px; border-radius: 50%;
   color: #cfefff; background: radial-gradient(circle at 35% 30%, rgba(126, 224, 255, .22), rgba(10, 26, 58, .75) 70%);
   border: 1px solid rgba(126, 224, 255, .55); box-shadow: 0 0 12px rgba(70, 190, 255, .25), inset 0 0 10px rgba(126, 224, 255, .12);
   transition: transform .15s, box-shadow .25s, color .2s; }
-.lm-ikey svg { width: 20px; height: 20px; }
+.lm-ikey svg { width: 15px; height: 15px; }
 .lm-ikey path { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
 .lm-ikey path.filled { fill: currentColor; stroke: none; }
 .lm-ikey:hover { color: #fff; transform: scale(1.08); box-shadow: 0 0 22px rgba(110, 215, 255, .7), inset 0 0 12px rgba(126, 224, 255, .25); }
 .lm-ikey:active { transform: scale(.95); }
 .lm-ikey:focus-visible { outline: 2px solid #7ecaff; outline-offset: 3px; }
-.lm-ikey--big { width: 52px; height: 52px; color: #04172b; border-color: rgba(201, 246, 255, .9);
+.lm-ikey--big { width: 36px; height: 36px; color: #04172b; border-color: rgba(201, 246, 255, .9);
   background: linear-gradient(135deg, #c9f6ff 0%, #5fd4ff 50%, #3a8cff 100%); box-shadow: 0 0 18px rgba(95, 212, 255, .6); }
 .lm-ikey--big:hover { color: #04172b; }
-.lm-ikey--big svg { width: 22px; height: 22px; }
+.lm-ikey--big svg { width: 16px; height: 16px; }
 .lm-ikey--close { color: #ffb3cc; border-color: rgba(255, 140, 180, .5); }
 .lm-hud.on { opacity: 1; }
 .lm-dots { display: flex; gap: 6px; }
@@ -974,12 +975,18 @@ onUnmounted(() => {
 
 /* Meet Nurro */
 .lm-meet { gap: 3cqh; }
-.lm-meet-pic { width: clamp(180px, 30cqh, 340px); height: auto; filter: drop-shadow(0 10px 16px rgba(0, 0, 0, .5)); }
+.lm-meet-pic { width: clamp(180px, 30cqh, 340px); height: auto; filter: drop-shadow(0 10px 16px rgba(0, 0, 0, .5));
+  animation: lm-meet-fly .6s cubic-bezier(.2, 1.5, .35, 1) both; }
+/* Nurro streaks in from the left and lands with a bounce. */
+@keyframes lm-meet-fly {
+  0% { opacity: 0; transform: translate(-55cqw, 18cqh) scale(.35) rotate(-18deg); filter: blur(6px) brightness(2); }
+  60% { opacity: 1; filter: none; }
+  100% { opacity: 1; transform: none; } }
 .lm-meet-bubble { max-width: min(40em, 70cqw); min-height: 3em; padding: 18px 28px; border-radius: 18px; text-align: center;
   font: 700 clamp(18px, 1.9cqw, 34px)/1.45 Inter, sans-serif; color: #fff;
   background: rgba(10, 22, 58, .78); border: 1px solid rgba(140, 210, 255, .45); box-shadow: 0 0 30px rgba(60, 170, 255, .25);
-  opacity: 0; transform: translateY(14px); transition: opacity .6s, transform .6s; }
-.lm-meet-bubble.on { opacity: 1; transform: none; }
+  opacity: 0; transform: scaleY(.04); filter: blur(4px) brightness(2); transition: opacity .15s, transform .3s cubic-bezier(.2, 1.3, .4, 1), filter .3s; }
+.lm-meet-bubble.on { opacity: 1; transform: none; filter: none; }
 
 .lm-reduced *, .lm-reduced *::before { animation: none !important; transition: none !important; }
 .lm-reduced .lm-star { opacity: 1; }
