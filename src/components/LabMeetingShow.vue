@@ -173,11 +173,18 @@ function ensureCloud() {
   cloudN = n;
   void loadNeuronPoints(n).then(c => { if (cloudN === n) cloud = c; }, () => {});
 }
+/** One smooth ramp by date, Sep 28 to today (Ames: "a gradient by date"):
+ *  cyan, through blue and violet, to pink. Dots light in the order cells were done. */
+const DOT_STOPS: [number, number, number][] = [[63, 216, 255], [90, 150, 255], [170, 120, 255], [255, 122, 168]];
+const DOT_RAMP = Array.from({ length: 64 }, (_, k) => {
+  const f = k / 63 * (DOT_STOPS.length - 1), i = Math.min(DOT_STOPS.length - 2, Math.floor(f)), u = f - i;
+  const c = DOT_STOPS[i].map((v, j) => Math.round(v + (DOT_STOPS[i + 1][j] - v) * u));
+  return `rgb(${c[0]},${c[1]},${c[2]})`;
+});
 function drawCellDots(ctx: CanvasRenderingContext2D) {
   if (!cloud) return;
   const total = cloud.length / 3;
   const lit = reduced ? total : Math.floor(easeOut(clamp01((t.value - 1200) / 8000)) * total);
-  const novStart = total - Math.min(total, stats.value.months[stats.value.months.length - 1].cells);
   const aspect = W / Math.max(1, H);
   ctx.globalCompositeOperation = 'lighter';
   for (let i = 0; i < total; i++) {
@@ -185,7 +192,7 @@ function drawCellDots(ctx: CanvasRenderingContext2D) {
     const x = u * W, y = v * H, r = 2.6 + (0.5 - z * 0.5) * 1.2;
     if (i < lit) {
       ctx.globalAlpha = 0.95;
-      ctx.fillStyle = lit - i < 60 && lit < total ? '#ffffff' : i >= novStart ? '#ff7aa8' : '#3fd8ff';
+      ctx.fillStyle = lit - i < 60 && lit < total ? '#ffffff' : DOT_RAMP[Math.min(DOT_RAMP.length - 1, Math.floor(i / total * DOT_RAMP.length))];
     } else { ctx.globalAlpha = 0.16; ctx.fillStyle = '#9fc4ff'; }
     ctx.fillRect(x - r / 2, y - r / 2, r, r);
   }
@@ -602,9 +609,8 @@ onUnmounted(() => {
           <div class="lm-kicker on">Cells completed</div>
           <div class="lm-big">{{ count(stats.cells, 600, 2000) }}</div>
           <div class="lm-label">one glowing dot for every cell a player finished</div>
-          <div class="lm-legend lm-legend--col" :class="{ on: after(1800) }">
-            <span style="--c: #3fd8ff"><i />Through October</span>
-            <span style="--c: #ff7aa8"><i />November, at the tips</span>
+          <div class="lm-legend lm-grad-key" :class="{ on: after(1800) }">
+            <span>Sep 28</span><i class="lm-grad-bar" /><span>Today</span>
           </div>
         </div>
       </section>
@@ -795,7 +801,8 @@ onUnmounted(() => {
 .lm-para.on { opacity: 1; transform: none; }
 .lm-copy--narrow { flex-basis: 34%; }
 .lm-copy--narrow .lm-label { font-size: clamp(16px, 1.5cqw, 26px); max-width: 16em; }
-.lm-legend--col { flex-direction: column; gap: 12px; margin-top: 3cqh; }
+.lm-grad-key { align-items: center; gap: 12px; margin-top: 3cqh; }
+.lm-grad-key .lm-grad-bar { width: clamp(120px, 14cqw, 260px); height: 10px; border-radius: 5px; background: linear-gradient(90deg, rgb(63,216,255), rgb(90,150,255), rgb(170,120,255), rgb(255,122,168)); box-shadow: 0 0 12px rgba(140, 160, 255, .5); }
 .lm-title-s { font: 700 clamp(26px, 3cqw, 52px) Inter, sans-serif; opacity: 0; transform: translateY(12px); transition: all .9s; }
 .lm-title-s.on { opacity: 1; transform: none; }
 
