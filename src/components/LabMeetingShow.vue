@@ -279,9 +279,16 @@ function sceneEntered(id: SceneId) {
       return [W * (0.5 + Math.cos(a) * r * 0.9), H * (0.46 + Math.sin(a) * r * 0.55)];
     } });
   } else if (id === 'finale') {
-    flights.push({ from: 600, ms: 1e9, scale: 0.9, at: q => {
-      const s = q * 1e9 / 5200 * Math.PI * 2;
-      return [W * (0.5 + Math.sin(s) * 0.38), H * (0.42 + Math.sin(s * 2) * 0.2)];
+    // Two figure eights around the date, then away off the panel (Ames: "should eventually fly away").
+    const LOOPS = 10400, OUT = 2600;
+    flights.push({ from: 600, ms: LOOPS + OUT, scale: 0.9, at: q => {
+      const e = q * (LOOPS + OUT);
+      if (e <= LOOPS) {
+        const s = e / 5200 * Math.PI * 2;
+        return [W * (0.5 + Math.sin(s) * 0.38), H * (0.42 + Math.sin(s * 2) * 0.2)];
+      }
+      const u = (e - LOOPS) / OUT;
+      return [W * (0.5 + 0.9 * u + 0.3 * u * u), H * (0.42 - 0.2 * u - 0.75 * u * u)];
     } });
   } else {
     // A quick pass across the screen, alternating sides.
