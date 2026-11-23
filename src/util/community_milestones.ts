@@ -103,8 +103,11 @@ export function celebrate(track: Track, value: number) {
   void takeTurn('community-milestone', () => !!celebration.value && celebration.value.track === track && celebration.value.value === value, { priority: 4 })
     .then(ok => {
       pendingMilestone = false;
+      // Seen once it plays, not only when closed with its x: a reload or a
+      // page left open replayed it on every visit (Ames 2026-11-23: "shouldn't
+      // this only play one time?"). Its notification still replays it.
       if (ok && !celebration.value) celebration.value = { track, value, confetti: true };
-      else markSeen(track, value);
+      markSeen(track, value);
     });
 }
 let pendingMilestone = false;
