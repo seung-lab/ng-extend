@@ -728,7 +728,7 @@ onUnmounted(() => {
 /* The glass, cut at two corners like Pyr's transmission boxes. */
 .lm-stage-bg { position: absolute; inset: 0; z-index: -2; pointer-events: none;
   clip-path: polygon(29px 0, 100% 0, 100% calc(100% - 29px), calc(100% - 29px) 100%, 0 100%, 0 29px);
-  background: linear-gradient(160deg, rgba(8, 16, 48, .62), rgba(5, 10, 31, .5) 60%, rgba(22, 14, 48, .55)); }
+  background: linear-gradient(160deg, rgba(6, 12, 34, .9), rgba(4, 8, 24, .88) 60%, rgba(10, 10, 32, .9)); }
 .lm-stage-bg::after { content: ''; position: absolute; inset: 0; opacity: .35; background: repeating-linear-gradient(0deg, rgba(126, 224, 255, .05) 0 1px, transparent 1px 3px); }
 .lm-stage .lm-frame :deep(svg) { width: 100%; height: 100%; }
 .lm-stage .nge-intro-ring, .lm-stage .nge-intro-scan { z-index: 3; }
@@ -896,7 +896,7 @@ onUnmounted(() => {
   opacity: 0; transform: translateY(30px) scale(.9); transition: all .7s cubic-bezier(.2, 1.4, .4, 1);
 }
 .lm-tile.on { opacity: 1; transform: none; }
-.lm-tile-icon { width: clamp(48px, 7cqh, 84px); height: auto; filter: drop-shadow(0 0 14px rgba(110, 200, 255, .45)); }
+.lm-tile-icon { width: clamp(72px, 11cqh, 130px); height: auto; filter: drop-shadow(0 8px 10px rgba(0, 0, 0, .6)); }
 .lm-tile b { font: 800 clamp(34px, 3.6cqw, 64px) Orbitron, Inter, sans-serif; font-variant-numeric: tabular-nums; color: #fff; text-shadow: 0 0 18px rgba(90, 200, 255, .6); }
 .lm-tile span:last-child { font: 600 clamp(13px, 1.15cqw, 20px) Inter, sans-serif; color: #cfe3ff; text-align: center; }
 
