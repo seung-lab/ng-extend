@@ -74,7 +74,7 @@ function go(i: number) {
   if (i < 0 || i >= SCENES.length) return;
   idx.value = i;
   sceneStart.value = performance.now();
-  if (paused.value) pausedAt = sceneStart.value;
+  paused.value = false;
   warp = 1;
   sceneEntered(SCENES[i].id);
 }
@@ -154,6 +154,15 @@ const editCurve = computed(() => {
   return { pts, d, area, start: pts[0], last: pts[pts.length - 1] };
 });
 
+const curveEl = ref<SVGPathElement | null>(null);
+/** The line draws itself from Sep 28 to now, measured in pixels so every browser draws it. */
+const curveStyle = computed(() => {
+  void editCurve.value.d;
+  const L = curveEl.value?.getTotalLength?.() || 2000;
+  const q = reduced ? 1 : easeOut(clamp01((t.value - 600) / 2800));
+  return { strokeDasharray: `${L} ${L}`, strokeDashoffset: `${L * (1 - q)}` };
+});
+
 // ── Cells: one glowing dot per finished cell, on the real neuron ──────────
 /** Points on the turning neuron, soma first, so lighting them in order grows the cell. */
 let cloud: Float32Array | null = null, cloudN = 0;
@@ -172,11 +181,11 @@ function drawCellDots(ctx: CanvasRenderingContext2D) {
   ctx.globalCompositeOperation = 'lighter';
   for (let i = 0; i < total; i++) {
     const [u, v, z] = projectNeuron(cloud[i * 3], cloud[i * 3 + 1], cloud[i * 3 + 2], neuronAng, aspect, neuronShift);
-    const x = u * W, y = v * H, r = 1.6 + (0.5 - z * 0.5) * 0.9;
+    const x = u * W, y = v * H, r = 2.6 + (0.5 - z * 0.5) * 1.2;
     if (i < lit) {
       ctx.globalAlpha = 0.95;
       ctx.fillStyle = lit - i < 60 && lit < total ? '#ffffff' : i >= novStart ? '#ff7aa8' : '#3fd8ff';
-    } else { ctx.globalAlpha = 0.1; ctx.fillStyle = '#9fc4ff'; }
+    } else { ctx.globalAlpha = 0.16; ctx.fillStyle = '#9fc4ff'; }
     ctx.fillRect(x - r / 2, y - r / 2, r, r);
   }
   ctx.globalAlpha = 1;
@@ -217,7 +226,7 @@ const neuronCv = ref<HTMLCanvasElement | null>(null);
 let neuron: NeuronLayer | null = null, neuronAng = 0.4, neuronIn = 0, neuronShift = 0;
 /** Brighter on the title and the finale, fainter behind charts so they read;
  *  on the cells scene a ghost, with the cells as dots on it. */
-const NEURON_GLOW: Record<string, number> = { intro: 0.75, players: 0.55, tutorials: 0.35, edits: 0.3, cells: 0.14, datasets: 0.45, community: 0.35, finale: 0.7 };
+const NEURON_GLOW: Record<string, number> = { intro: 0.75, players: 0.55, tutorials: 0.35, edits: 0.3, cells: 0, datasets: 0.45, community: 0.35, finale: 0.7 };
 const NEURON_SHIFT: Record<string, number> = { cells: 0.3 };
 let neuronGlow = 0.6;
 let raf = 0, warp = 1, W = 0, H = 0, dpr = 1;
@@ -286,6 +295,7 @@ function burstAt(sel: string, n = 70) {
   burst(b.left - o.left + b.width / 2, b.top - o.top + b.height / 2, n, SCENES[idx.value].hue.concat('#ffffff'));
 }
 
+const NEBULA: [number, number, number][] = [[40, 110, 230], [30, 80, 190], [50, 150, 240]];
 let lastFrame = performance.now(), lastShip: [number, number] | null = null, nextFirework = 0;
 function frame(nowMs: number) {
   raf = requestAnimationFrame(frame);
@@ -308,9 +318,10 @@ function frame(nowMs: number) {
   ];
   ctx.globalCompositeOperation = 'lighter';
   blobs.forEach(([bx, by, br], i) => {
-    const [r, g, b] = hue[i];
+    // One steady Pyr blue, no colored nebulas per scene (Ames: "I don't like that gradient color").
+    const [r, g, b] = NEBULA[i];
     const gr = ctx.createRadialGradient(bx * W, by * H, 0, bx * W, by * H, br * Math.max(W, H));
-    gr.addColorStop(0, `rgba(${r | 0},${g | 0},${b | 0},0.2)`);
+    gr.addColorStop(0, `rgba(${r | 0},${g | 0},${b | 0},0.14)`);
     gr.addColorStop(1, `rgba(${r | 0},${g | 0},${b | 0},0)`);
     ctx.fillStyle = gr;
     ctx.fillRect(0, 0, W, H);
@@ -319,10 +330,10 @@ function frame(nowMs: number) {
   if (neuron) {
     neuronIn = Math.min(1, neuronIn + dt / 2.5);
     if (!reduced) neuronAng += dt * ((paused.value ? 0.03 : 0.14) + warp * warp * 2.2);
-    const lift = (c: [number, number, number]) => c.map(v => v * 0.75 + 70) as [number, number, number];
     neuronGlow += ((NEURON_GLOW[scene.value.id] ?? 0.5) - neuronGlow) * Math.min(1, dt * 1.2);
     neuronShift += ((NEURON_SHIFT[scene.value.id] ?? 0) - neuronShift) * Math.min(1, dt * 1.6);
-    neuron.draw(neuronAng, lift(hue[1]), lift(hue[0]), neuronGlow * neuronIn, neuronShift);
+    // Always the cool blues of Pyr, never the scene's pinks (Ames: "too creepy").
+    neuron.draw(neuronAng, [120, 210, 255], [200, 235, 255], neuronGlow * neuronIn * 0.8, neuronShift);
   }
   if (scene.value.id === 'cells') { ensureCloud(); drawCellDots(ctx); }
   // Stars flying toward us; a warp on every scene change.
@@ -447,12 +458,20 @@ function onKey(e: KeyboardEvent) {
   e.stopPropagation();
 }
 /** The controls: Pyr's command keys, each with its own little circuit. */
+const ICONS: Record<string, string> = {
+  back: 'M14.5 6l-6 6 6 6',
+  next: 'M9.5 6l6 6-6 6',
+  play: 'M8 5.5v13l11-6.5z',
+  pause: 'M8 5.5h3v13H8zM13 5.5h3v13h-3z',
+  close: 'M7 7l10 10M17 7L7 17',
+};
+/** The controls: round glass keys with icons. */
 const keys = computed(() => [
-  { label: 'Back', title: 'Back (Left)', act: prev, alt: true },
-  { label: paused.value ? 'Play' : 'Pause', title: 'Pause or play (P)', act: togglePause, alt: true },
-  { label: 'Next', title: 'Next (Right)', act: next, alt: false },
-  { label: 'Close', title: 'Close (Esc)', act: close, alt: true },
-].map((k, i) => ({ ...k, trace: i % 2 ? 'M2 2 V12 H18 L26 28 H58' : 'M2 28 V18 H22 L30 2 H58' })));
+  { id: 'back', title: 'Back (Left)', act: prev, big: false },
+  { id: paused.value ? 'play' : 'pause', title: paused.value ? 'Play (P)' : 'Pause (P)', act: togglePause, big: true },
+  { id: 'next', title: 'Next (Right)', act: next, big: false },
+  { id: 'close', title: 'Close (Esc)', act: close, big: false },
+].map(k => ({ ...k, d: ICONS[k.id], filled: k.id === 'play' || k.id === 'pause' })));
 let hudTimer = 0;
 const hudOn = ref(true);
 function poke() {
@@ -552,7 +571,7 @@ onUnmounted(() => {
           <line v-for="p in editCurve.pts" :key="'g' + p.label" :x1="p.x" :x2="p.x" :y1="CH.top - 10" :y2="CH.h - CH.b" class="lm-grid" />
           <text v-for="p in editCurve.pts" :key="'l' + p.label" :x="p.x" :y="CH.h - CH.b + 30" class="lm-axis">{{ p.label }}</text>
           <path :d="editCurve.area" fill="url(#lm-area)" class="lm-area" :class="{ on: after(2600) }" />
-          <path :d="editCurve.d" class="lm-curve" :class="{ on: after(600) }" pathLength="1" stroke="url(#lm-stroke)" />
+          <path ref="curveEl" :d="editCurve.d" class="lm-curve" stroke="url(#lm-stroke)" :style="curveStyle" />
           <g class="lm-then" :class="{ on: after(1200) }">
             <circle :cx="editCurve.start.x" :cy="editCurve.start.y" r="9" />
             <text :x="editCurve.start.x + 4" :y="editCurve.start.y - 64" class="lm-then-label">Alpha opens</text>
@@ -652,9 +671,9 @@ onUnmounted(() => {
     <transition name="lm-nurro" mode="out-in">
       <div :key="scene.id" class="lm-guide" :class="{ 'lm-guide--finale': scene.id === 'finale', 'lm-guide--intro': scene.id === 'intro' }">
         <img class="lm-guide-pic" :src="scene.pose" alt="" draggable="false" />
-        <div class="lm-bubble">
+        <div v-if="spoken" class="lm-bubble">
           <div class="lm-bubble-name">Nurro</div>
-          <div class="lm-bubble-text">{{ spoken }}<span class="lm-caret" /></div>
+          <div class="lm-bubble-text">{{ spoken }}</div>
         </div>
       </div>
     </transition>
@@ -666,13 +685,8 @@ onUnmounted(() => {
           <i v-if="i === idx && s.ms" :style="{ width: `${clamp01(t / s.ms) * 100}%` }" />
         </button>
       </span>
-      <button v-for="(k, ki) in keys" :key="ki" type="button" class="nge-go lm-key" :class="{ 'nge-go--alt': k.alt }" :title="k.title" :style="{ '--k': ki }" @click.stop="k.act()">
-        <span class="nge-go-label">{{ k.label }}</span>
-        <svg class="lm-key-circuit" viewBox="0 0 60 30" aria-hidden="true">
-          <path :d="k.trace" pathLength="1" />
-          <path class="lm-key-spark" :d="k.trace" pathLength="1" />
-          <circle cx="58" :cy="ki % 2 ? 28 : 2" r="2.6" />
-        </svg>
+      <button v-for="k in keys" :key="k.title" type="button" class="lm-ikey" :class="{ 'lm-ikey--big': k.big, 'lm-ikey--close': k.id === 'close' }" :title="k.title" :aria-label="k.title" @click.stop="k.act()">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path :d="k.d" :class="{ filled: k.filled }" /></svg>
       </button>
     </div>
    </div>
@@ -757,7 +771,7 @@ onUnmounted(() => {
 .lm-copy { flex: 0 0 40%; }
 .lm-big {
   font: 800 clamp(80px, 11cqw, 200px)/1 Orbitron, Inter, sans-serif; font-variant-numeric: tabular-nums;
-  background: linear-gradient(180deg, #ffffff, #9fdcff); -webkit-background-clip: text; background-clip: text; color: transparent;
+  color: #eef9ff; text-shadow: 0 0 22px rgba(110, 210, 255, .75), 0 0 60px rgba(60, 150, 255, .4);
   filter: drop-shadow(0 0 26px rgba(90, 200, 255, .55)); margin: 1cqh 0;
 }
 .lm-big--wide { font-size: clamp(70px, 9cqw, 170px); }
@@ -802,15 +816,14 @@ onUnmounted(() => {
   box-shadow: 0 0 10px #ffd36a, 0 0 22px #ff8a4a; animation: lm-live 1.2s ease-in-out infinite; transition: left 1.4s cubic-bezier(.2, .9, .2, 1); }
 .lm-live--key { position: relative; display: inline-block; top: 0; margin: 0 8px 0 0; vertical-align: -1px; }
 @keyframes lm-live { 50% { transform: scale(1.35); box-shadow: 0 0 16px #ffd36a, 0 0 34px #ff8a4a; } }
-.lm-big--fire { background: linear-gradient(180deg, #fff6c8, #ffb45a); -webkit-background-clip: text; background-clip: text; filter: drop-shadow(0 0 26px rgba(255, 150, 80, .6)); }
+.lm-big--fire { color: #ffd98a; text-shadow: 0 0 22px rgba(255, 160, 80, .8), 0 0 60px rgba(255, 120, 60, .4); }
 
 /* Edits */
 .lm-head { text-align: center; }
 .lm-chart { width: min(70cqw, 92cqh); height: auto; overflow: visible; }
 .lm-grid { stroke: rgba(160, 200, 255, .12); stroke-width: 1; }
 .lm-axis { fill: #9fbfe6; font: 600 18px Orbitron, Inter, sans-serif; text-anchor: middle; }
-.lm-curve { fill: none; stroke-width: 7; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; filter: drop-shadow(0 0 10px rgba(63, 216, 255, .8)); }
-.lm-curve.on { transition: stroke-dashoffset 2.8s cubic-bezier(.6, 0, .3, 1); stroke-dashoffset: 0; }
+.lm-curve { fill: none; stroke-width: 7; stroke-linecap: round; filter: drop-shadow(0 0 10px rgba(63, 216, 255, .8)); }
 .lm-area { opacity: 0; transition: opacity 1.2s; }
 .lm-area.on { opacity: 1; }
 .lm-then, .lm-curve-end { opacity: 0; transition: opacity .6s; }
@@ -848,7 +861,7 @@ onUnmounted(() => {
 }
 @keyframes lm-counter { from { rotate: 0deg; } to { rotate: -360deg; } }
 @keyframes lm-planet-in { from { opacity: 0; scale: .2; } to { opacity: 1; scale: 1; } }
-.lm-planet img { width: clamp(64px, 8cqh, 110px); height: auto; filter: drop-shadow(0 0 16px rgba(90, 200, 255, .7)); }
+.lm-planet img { width: clamp(64px, 8cqh, 110px); height: auto; filter: drop-shadow(0 8px 10px rgba(0, 0, 0, .55)); }
 .lm-planet b { display: block; font: 700 clamp(14px, 1.2cqw, 20px) Inter, sans-serif; margin-top: 4px; }
 .lm-planet span { display: block; font: 500 clamp(12px, 1cqw, 16px) Inter, sans-serif; color: #ffcf4a; }
 .lm-ring-foot { margin-top: 1cqh; }
@@ -886,7 +899,7 @@ onUnmounted(() => {
 
 /* Nurro */
 .lm-guide { position: absolute; left: 1.6cqw; bottom: 1.8cqh; display: flex; align-items: flex-end; gap: 6px; pointer-events: none; }
-.lm-guide-pic { width: clamp(84px, 12cqh, 140px); height: auto; filter: drop-shadow(0 4px 14px rgba(0, 0, 0, .4)) drop-shadow(0 0 16px rgba(120, 200, 255, .35)); animation: lm-bob 2.6s ease-in-out infinite; }
+.lm-guide-pic { width: clamp(84px, 12cqh, 140px); height: auto; filter: drop-shadow(0 6px 10px rgba(0, 0, 0, .5)); }
 @keyframes lm-bob { 0%, 100% { transform: translateY(0) rotate(-3deg); } 50% { transform: translateY(-8px) rotate(3deg); } }
 .lm-bubble {
   position: relative; margin-bottom: 7cqh; padding: 8px 14px 9px; border-radius: 14px 14px 14px 3px;
@@ -905,24 +918,25 @@ onUnmounted(() => {
 
 /* Controls */
 .lm-hud {
-  position: absolute; right: 2.2cqw; bottom: 3.4cqh; display: flex; align-items: center; gap: 16px;
+  position: absolute; right: 2.2cqw; bottom: 3cqh; display: flex; align-items: center; gap: 12px;
   opacity: 0; transition: opacity .6s;
 }
-/* Pyr's command keys, each with a little circuit off its corner and a spark running along it. */
-.lm-hud .lm-key { margin-left: 0; height: 40px; overflow: visible; }
-.lm-hud .lm-key .nge-go-label { padding: 0 18px; font-size: 11px; letter-spacing: .24em; }
-.lm-hud .nge-go--alt .nge-go-label { background: linear-gradient(180deg, rgba(126, 224, 255, .1), rgba(40, 110, 200, .08)); }
-.lm-hud .nge-go--alt .nge-go-label::before { opacity: .7; }
-.lm-key-circuit { position: absolute; left: -30px; bottom: calc(100% - 8px); width: 40px; height: 20px; overflow: visible; pointer-events: none; }
-.lm-key-circuit path { fill: none; stroke: rgba(126, 224, 255, .5); stroke-width: 1.2; stroke-linecap: round; stroke-dasharray: 1; stroke-dashoffset: 1; }
-.lm-hud.on .lm-key-circuit path:not(.lm-key-spark) { animation: lm-trace-in .9s ease-out both; animation-delay: calc(var(--k) * 120ms); }
-.lm-key-circuit .lm-key-spark { stroke: #e2fbff; stroke-width: 2.2; stroke-dasharray: .16 .84; stroke-dashoffset: 1.16; filter: drop-shadow(0 0 3px #7ee0ff); opacity: 0; }
-.lm-hud.on .lm-key-circuit .lm-key-spark { opacity: 1; animation: lm-spark 2.4s linear infinite; animation-delay: calc(1s + var(--k) * 600ms); }
-.lm-key-circuit circle { fill: #0a1834; stroke: #9fe9ff; stroke-width: 1.4; opacity: 0; transition: opacity .3s; }
-.lm-hud.on .lm-key-circuit circle { opacity: 1; transition-delay: calc(.8s + var(--k) * 120ms); }
-.lm-key:hover .lm-key-circuit path { stroke: #9fe9ff; }
-@keyframes lm-trace-in { to { stroke-dashoffset: 0; } }
-@keyframes lm-spark { from { stroke-dashoffset: 1.16; } to { stroke-dashoffset: 0; } }
+/* Round glass keys with icons, Pyr's cyan edge, a glow on hover. */
+.lm-ikey { all: unset; box-sizing: border-box; cursor: pointer; display: grid; place-items: center; width: 42px; height: 42px; border-radius: 50%;
+  color: #cfefff; background: radial-gradient(circle at 35% 30%, rgba(126, 224, 255, .22), rgba(10, 26, 58, .75) 70%);
+  border: 1px solid rgba(126, 224, 255, .55); box-shadow: 0 0 12px rgba(70, 190, 255, .25), inset 0 0 10px rgba(126, 224, 255, .12);
+  transition: transform .15s, box-shadow .25s, color .2s; }
+.lm-ikey svg { width: 20px; height: 20px; }
+.lm-ikey path { fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+.lm-ikey path.filled { fill: currentColor; stroke: none; }
+.lm-ikey:hover { color: #fff; transform: scale(1.08); box-shadow: 0 0 22px rgba(110, 215, 255, .7), inset 0 0 12px rgba(126, 224, 255, .25); }
+.lm-ikey:active { transform: scale(.95); }
+.lm-ikey:focus-visible { outline: 2px solid #7ecaff; outline-offset: 3px; }
+.lm-ikey--big { width: 52px; height: 52px; color: #04172b; border-color: rgba(201, 246, 255, .9);
+  background: linear-gradient(135deg, #c9f6ff 0%, #5fd4ff 50%, #3a8cff 100%); box-shadow: 0 0 18px rgba(95, 212, 255, .6); }
+.lm-ikey--big:hover { color: #04172b; }
+.lm-ikey--big svg { width: 22px; height: 22px; }
+.lm-ikey--close { color: #ffb3cc; border-color: rgba(255, 140, 180, .5); }
 .lm-hud.on { opacity: 1; }
 .lm-dots { display: flex; gap: 6px; }
 .lm-dot { all: unset; cursor: pointer; position: relative; width: 22px; height: 6px; border-radius: 3px; background: rgba(255, 255, 255, .2); overflow: hidden; }
