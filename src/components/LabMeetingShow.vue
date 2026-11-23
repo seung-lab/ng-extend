@@ -291,8 +291,8 @@ function sceneEntered(id: SceneId) {
       const u = (e - LOOPS) / OUT;
       return [W * (0.5 + 0.9 * u + 0.3 * u * u), H * (0.42 - 0.2 * u - 0.75 * u * u)];
     } });
-  } else {
-    // A quick pass across the screen, alternating sides.
+  } else if (idx.value % 3 === 0) {
+    // A quick pass across the screen, on every third slide only (Ames 2026-11-23), alternating sides.
     const path = idx.value % 2 === 1 ? arc(-0.1, 0.85, 1.1, 0.12, 0.1) : arc(1.1, 0.8, -0.1, 0.18, 0.1);
     flights.push({ from: 150, ms: 2300, scale: 0.75, at: q => { const [x, y] = path(q); return [x * W, y * H]; } });
   }
