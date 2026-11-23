@@ -38,10 +38,11 @@ const fmt = (n: number) => Math.round(n).toLocaleString('en-US');
 const reduced = typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 // ── Scenes ──────────────────────────────────────────────────────────────────
-type SceneId = 'intro' | 'players' | 'tutorials' | 'edits' | 'cells' | 'datasets' | 'community' | 'streaks' | 'finale';
+type SceneId = 'intro' | 'nurro' | 'players' | 'tutorials' | 'edits' | 'cells' | 'datasets' | 'community' | 'streaks' | 'finale';
 interface Scene { id: SceneId; ms: number; pose: string; say: () => string; hue: [string, string, string]; }
 const SCENES: Scene[] = [
-  { id: 'intro', ms: 15000, pose: nurroSuper, hue: ['#2a6bff', '#9b5cff', '#18d4ff'],
+  { id: 'intro', ms: 11000, pose: nurroSuper, hue: ['#2a6bff', '#9b5cff', '#18d4ff'], say: () => '' },
+  { id: 'nurro', ms: 11000, pose: nurroSuper, hue: ['#2a6bff', '#9b5cff', '#18d4ff'],
     say: () => "Hi, I'm Nurro, the mascot for Seung Lab's citizen science endeavors. Pyr is our citizen science game that is now in alpha testing." },
   { id: 'players', ms: 20000, pose: nurroHome, hue: ['#1f8bff', '#28e0c8', '#7a5cff'],
     say: () => `${fmt(stats.value.editors)} proofreaders and counting!` },
@@ -112,7 +113,7 @@ const TAGLINE = [
 const spoken = computed(() => {
   const s = scene.value.say();
   if (reduced) return s;
-  const n = Math.floor(clamp01((t.value - 1700) / (s.length * 32)) * s.length);
+  const n = Math.floor(clamp01((t.value - (scene.value.id === 'nurro' ? 1300 : 1700)) / (s.length * 32)) * s.length);
   return s.slice(0, n);
 });
 
@@ -226,7 +227,7 @@ const neuronCv = ref<HTMLCanvasElement | null>(null);
 let neuron: NeuronLayer | null = null, neuronAng = 0.4, neuronIn = 0, neuronShift = 0;
 /** Brighter on the title and the finale, fainter behind charts so they read;
  *  on the cells scene a ghost, with the cells as dots on it. */
-const NEURON_GLOW: Record<string, number> = { intro: 0.75, players: 0.55, tutorials: 0.35, edits: 0.3, cells: 0, datasets: 0.45, community: 0.35, finale: 0.7 };
+const NEURON_GLOW: Record<string, number> = { intro: 0.75, nurro: 0.4, players: 0.55, tutorials: 0.35, edits: 0.3, cells: 0, datasets: 0.45, community: 0.35, finale: 0.7 };
 const NEURON_SHIFT: Record<string, number> = { cells: 0.3 };
 let neuronGlow = 0.6;
 let raf = 0, warp = 1, W = 0, H = 0, dpr = 1;
@@ -265,8 +266,9 @@ function sceneEntered(id: SceneId) {
   if (id === 'intro') {
     flights.push({ from: 200, ms: 3600, scale: 1.25, at: q => {
       // In from the lower left, a loop around the title, away to the upper right.
+      // ...and on out past the edge, never vanishing mid panel (Ames).
       const a = -Math.PI * 0.9 + q * Math.PI * 2.4;
-      const r = 0.34 + (1 - q) * 0.5;
+      const r = 0.34 + (1 - q) * 0.5 + Math.pow(Math.max(0, q - 0.7) / 0.3, 2) * 1.1;
       return [W * (0.5 + Math.cos(a) * r * 0.9), H * (0.46 + Math.sin(a) * r * 0.55)];
     } });
   } else if (id === 'finale') {
@@ -484,6 +486,7 @@ function close() {
 }
 
 onMounted(() => {
+  document.body.classList.add('nge-lab-show-on');
   ensureIntroStyle(); // Pyr's command keys (.nge-go), from the Starship tour
   resize();
   stars = Array.from({ length: Math.round(Math.min(700, W * H / 3000)) }, () => newStar());
@@ -496,6 +499,7 @@ onMounted(() => {
   if (neuronCv.value) void createNeuronLayer(neuronCv.value).then(l => { neuron = l; }, () => { /* no neuron: the sky alone */ });
 });
 onUnmounted(() => {
+  document.body.classList.remove('nge-lab-show-on');
   cancelAnimationFrame(raf);
   neuron?.dispose(); neuron = null;
   removeEventListener('resize', resize);
@@ -526,6 +530,12 @@ onUnmounted(() => {
           <svg class="lm-trace lm-trace--r" viewBox="0 0 220 24" aria-hidden="true"><path d="M2 12 H100 L116 20 H214" pathLength="1" /><circle cx="214" cy="20" r="3.2" /><circle cx="2" cy="12" r="2.4" /></svg>
         </div>
         <div class="lm-date" :class="{ on: after(5200) }">November 23, 2026</div>
+      </section>
+
+      <!-- 1b. Meet Nurro -->
+      <section v-else-if="scene.id === 'nurro'" key="nurro" class="lm-scene lm-center lm-meet">
+        <img class="lm-meet-pic" :src="nurroSuper" alt="" draggable="false" />
+        <div class="lm-meet-bubble" :class="{ on: after(900) }">{{ spoken || '\u00a0' }}</div>
       </section>
 
       <!-- 2. Players -->
@@ -669,7 +679,7 @@ onUnmounted(() => {
 
     <!-- Nurro, the guide -->
     <transition name="lm-nurro" mode="out-in">
-      <div :key="scene.id" class="lm-guide" :class="{ 'lm-guide--finale': scene.id === 'finale', 'lm-guide--intro': scene.id === 'intro' }">
+      <div v-if="scene.id !== 'intro' && scene.id !== 'nurro'" :key="scene.id" class="lm-guide" :class="{ 'lm-guide--finale': scene.id === 'finale' }">
         <img class="lm-guide-pic" :src="scene.pose" alt="" draggable="false" />
         <div v-if="spoken" class="lm-bubble">
           <div class="lm-bubble-name">Nurro</div>
@@ -944,6 +954,20 @@ onUnmounted(() => {
 .lm-dot.on { width: 40px; background: rgba(255, 255, 255, .25); }
 .lm-dot i { position: absolute; inset: 0 auto 0 0; background: #ffcf4a; }
 
+/* Meet Nurro */
+.lm-meet { gap: 3cqh; }
+.lm-meet-pic { width: clamp(180px, 30cqh, 340px); height: auto; filter: drop-shadow(0 10px 16px rgba(0, 0, 0, .5)); }
+.lm-meet-bubble { max-width: min(40em, 70cqw); min-height: 3em; padding: 18px 28px; border-radius: 18px; text-align: center;
+  font: 700 clamp(18px, 1.9cqw, 34px)/1.45 Inter, sans-serif; color: #fff;
+  background: rgba(10, 22, 58, .78); border: 1px solid rgba(140, 210, 255, .45); box-shadow: 0 0 30px rgba(60, 170, 255, .25);
+  opacity: 0; transform: translateY(14px); transition: opacity .6s, transform .6s; }
+.lm-meet-bubble.on { opacity: 1; transform: none; }
+
 .lm-reduced *, .lm-reduced *::before { animation: none !important; transition: none !important; }
 .lm-reduced .lm-star { opacity: 1; }
+</style>
+
+<style>
+/* Pyr's Play button hides while the lab meeting preview is up. */
+body.nge-lab-show-on .nge-play-dock { display: none !important; }
 </style>
