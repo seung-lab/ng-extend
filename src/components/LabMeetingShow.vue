@@ -26,9 +26,9 @@ import embCa3 from '../images/datasets/ca3.png';
 import { ensureIntroStyle, introFrameSvg } from '../util/intro_tour';
 import { createNeuronLayer, loadNeuronPoints, projectNeuron, type NeuronLayer } from '../util/lab_neuron';
 import icoChat from '../../static/badges/pyr/center-art/exploration/radar-dish.png';
-import icoAch from '../../static/badges/pyr/center-art/loyalty/second-spark.png';
+import icoAch from '../../static/badges/pyr/center-art/loyalty/everstar.png';
 import icoBug from '../../static/badges/pyr/center-art/exploration/magnifying-glass.png';
-import icoShip from '../../static/badges/pyr/center-art/exploration/rocket.png';
+import icoShip from '../../static/badges/pyr/center-art/exploration/planetary-lander.png';
 import { LabStats, SNAPSHOT, loadLabStats } from '../util/lab_meeting_stats';
 
 const emit = defineEmits<{ (e: 'hide'): void }>();
