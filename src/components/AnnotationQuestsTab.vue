@@ -146,7 +146,13 @@ const availableShown = computed(() => available.value.slice(0, OPEN_SHOWN));
 const openCount = computed(() => counts.value?.open ?? available.value.length);
 const takenCount = computed(() => counts.value?.taken ?? rows.value.filter(r => !!r.annotator && !isMine(r) && !isDone(r)).length);
 const doneByOthers = computed(() => counts.value?.done ?? rows.value.filter(r => isDone(r) && !isMine(r)).length);
-const done = computed(() => rows.value.filter(r => isDone(r) && isMine(r) && !r.held));
+// Newest first (toknow, report 623): by the sheet's date, and among the same
+// date (or none that reads) the one further down the sheet, submitted later.
+const done = computed(() => rows.value
+  .map((r, i) => ({ r, i, t: Date.parse(r.date) }))
+  .filter(({ r }) => isDone(r) && isMine(r) && !r.held)
+  .sort((a, b) => ((Number.isFinite(b.t) ? b.t : 0) - (Number.isFinite(a.t) ? a.t : 0)) || b.i - a.i)
+  .map(({ r }) => r));
 /** The sheet has cells, though none of them may be in the list. */
 const hasCells = computed(() => rows.value.length > 0 || (counts.value?.total ?? 0) > 0);
 
