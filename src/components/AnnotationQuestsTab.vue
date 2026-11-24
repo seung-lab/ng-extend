@@ -16,6 +16,7 @@ import { onTextEditAsked } from '../text_edit_links';
 import { QUEST_TITLE, QUEST_LEAD, QUEST_GUIDE_URL, QUEST_VIDEO_URL, QUEST_STATUSES, QUEST_SPLIT_MERGED, QUEST_CLAIM_LIMIT, listQuests, claimQuest, releaseQuest, submitQuest, annotationCountInView, dressQuestLayers, layerSnapshot, nameKey, cellTypeForPlayers, type QuestRow, type QuestCounts } from '../annotation_quests';
 import { openStartLink } from '../util/start_link';
 import CrosshairHelp from './CrosshairHelp.vue';
+import { canSwapCentrioles, swapCentrioles } from '../annotation_quests';
 import { questWork, setActiveQuest, markQuestOnScreen, questOnScreen, saveQuestWork, loadQuestWork, readSavedQuestWork, markQuestWorkClean } from '../annotation_quests';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
 import { mintShortStateLink } from '../util/state_link';
@@ -353,6 +354,21 @@ async function saveNow(r: QuestRow) {
   if (!questOnScreen(r.segmentId)) { error.value = `${r.index || 'This cell'} is not on screen. Press Open first.`; return; }
   if (await saveQuestWork(r.segmentId)) message.value = `Your work on ${r.index || 'this cell'} is saved.`;
 }
+// Swap the Basal body and Daughter centriole marks (toknow's idea, report
+// 622): shown once there is something in those layers to trade.
+const swapReady = ref(false);
+const swapNote = ref('');
+let swapTimer: ReturnType<typeof setInterval> | undefined;
+let swapNoteTimer: ReturnType<typeof setTimeout> | undefined;
+onMounted(() => { swapReady.value = canSwapCentrioles(); swapTimer = setInterval(() => { swapReady.value = canSwapCentrioles(); }, 1000); });
+onUnmounted(() => { clearInterval(swapTimer); clearTimeout(swapNoteTimer); });
+function swapBbDc() {
+  const n = swapCentrioles();
+  swapNote.value = n ? 'Swapped' : '';
+  clearTimeout(swapNoteTimer);
+  swapNoteTimer = setTimeout(() => { swapNote.value = ''; }, 1800);
+}
+
 /** "Saved: 2:02 pm", or what is happening to it. */
 function savedLine(r: QuestRow): string {
   if (questWork.saving === r.segmentId) return 'Saving your work…';
@@ -622,6 +638,15 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
                   <span>{{ savedLine(r) }}</span>
                   <button v-if="isActive(r)" class="nge-aq-save" :disabled="questWork.saving === r.segmentId" @click="saveNow(r)" title="Save your work on this quest now. It is also saved as you place annotations.">Save</button>
                 </span>
+                <button v-if="isActive(r) && swapReady" class="nge-aq-btn nge-aq-btn--swap" @click.stop="swapBbDc"
+                        title="Swap the Basal body and Daughter centriole marks, for when the two were placed the wrong way round" aria-label="Swap the Basal body and Daughter centriole marks">
+                  <svg width="30" height="16" viewBox="0 0 30 16" aria-hidden="true">
+                    <circle cx="6" cy="8" r="4" fill="#f5d142"/><circle cx="24" cy="8" r="4" fill="#e06060"/>
+                    <path d="M9 4.2 Q15 0.5 21 4.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M19.2 2.6 L21.3 4.4 L18.6 5.1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                    <path d="M21 11.8 Q15 15.5 9 11.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M10.8 13.4 L8.7 11.6 L11.4 10.9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                  </svg>
+                  <span v-if="swapNote" class="nge-aq-swap-note">{{ swapNote }}</span>
+                </button>
                 <!-- Submit shows on the slim bar too (Kim_OZ 2026-11-12: players did not know the row opens it). -->
                 <!-- One "go to it" button, Open (Ames 2026-11-10: "why is there a jump and an open button?"),
                      then Skip (or Release), then Submit last, in green. -->
@@ -749,7 +774,11 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 <style scoped>
 /* The Cell Library's own rows, pips and buttons, with their values, so the
    Quests tab reads as part of the same panel. */
-.nge-aq { display: flex; flex-direction: column; }
+.nge-aq { display: flex; flex-direction: column; font-family: 'Inter', system-ui, sans-serif; }
+/* The slim quest bar sits over the view, where the page's own monospace
+   showed through ("why does this player have this weird type?", 2026-11-24). */
+.nge-aq-btn--swap { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; color: #cfe4fa; }
+.nge-aq-swap-note { font-size: 12px; color: #a6ffd6; }
 .nge-aq-head { padding: 10px 12px 8px; border-bottom: 1px solid rgba(120, 140, 255, 0.08); display: flex; flex-direction: column; gap: 5px; }
 /* Sizes are in px (Ames 2026-10-13: "font is so tiny"): the panel's em
    chain made them smaller than they looked in the stylesheet. */

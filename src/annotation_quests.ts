@@ -466,3 +466,51 @@ export function startQuestWorkWatch(viewer: any, userId: () => string | null) {
     timer = setTimeout(maybeSave, WORK_QUIET_MS);
   });
 }
+
+/**
+ * The Basal body and Daughter centriole layers, when both are in the view
+ * with something in them to trade. For the quest bar's swap button
+ * (toknow's idea, report 622: a wrong guess at which centriole is which
+ * meant deleting both points and placing them again).
+ */
+function centrioleSources(): { basal: any; daughter: any } | null {
+  const viewer: any = (window as any)['viewer'];
+  const layers: any[] = viewer?.layerManager?.managedLayers ?? [];
+  const find = (re: RegExp) => layers.find(ml => !ml.archived && re.test(ml.name) && ml.layer?.localAnnotations)?.layer?.localAnnotations;
+  const basal = find(/basal/i);
+  const daughter = find(/centriole/i);
+  return basal && daughter ? { basal, daughter } : null;
+}
+function annotationsOf(src: any): any[] {
+  const out: any[] = [];
+  try { for (const a of src) out.push(a); } catch { /* none */ }
+  return out;
+}
+/** Whether the swap has anything to do: both layers there, a mark in at least one. */
+export function canSwapCentrioles(): boolean {
+  const s = centrioleSources();
+  return !!s && (annotationsOf(s.basal).length + annotationsOf(s.daughter).length) > 0;
+}
+/** Trade every mark between the Basal body and Daughter centriole layers.
+ *  Returns how many marks moved. */
+export function swapCentrioles(): number {
+  const s = centrioleSources();
+  if (!s) return 0;
+  const fromBasal = annotationsOf(s.basal);
+  const fromDaughter = annotationsOf(s.daughter);
+  // A layer's marks carry values for that layer's own properties; a mark
+  // moved over takes the other layer's, at their defaults where they differ.
+  const fit = (a: any, dest: any) => {
+    const specs: any[] = dest.properties?.value ?? dest.properties ?? [];
+    const same = Array.isArray(a.properties) && a.properties.length === specs.length;
+    return { ...a, properties: same ? a.properties : specs.map((p: any) => p?.default ?? 0) };
+  };
+  const clear = (src: any, list: any[]) => {
+    for (const a of list) { const ref = src.getReference(a.id); try { src.delete(ref); } finally { ref.dispose(); } }
+  };
+  clear(s.basal, fromBasal);
+  clear(s.daughter, fromDaughter);
+  for (const a of fromBasal) s.daughter.add(fit(a, s.daughter), true).dispose();
+  for (const a of fromDaughter) s.basal.add(fit(a, s.basal), true).dispose();
+  return fromBasal.length + fromDaughter.length;
+}
