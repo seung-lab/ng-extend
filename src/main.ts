@@ -1092,11 +1092,17 @@ function observeSplitMergeTools() {
         // as long as neuroglancer would have shown them: under the cut bar
         // they lifted it and the TODO / PROOFREAD legend for a moment (Nseraf,
         // report 553 reply: "make them appear like the errors do").
-        const note = /has already been selected/.test(lower) ? 7000
+        // A right click on a cell not drawn in 3D (Nseraf, report 620: the
+        // line lifted the TODO list) says so the same way, in plain words.
+        const noPlace = /^no position information loaded for segment (\d+)/.exec(lower);
+        const note = noPlace ? 6000
+          : /has already been selected/.test(lower) ? 7000
           : /but the supervoxels already selected have root/.test(lower) ? 12000 : 0;
         if (note) {
           shownErrorLines.add(el);
-          store.showResult('error', text.replace(/\s*dismiss\s*$/i, '').trim(), note);
+          store.showResult('error', noPlace
+            ? `Can't go to ${noPlace[1]}: it isn't drawn in 3D yet. Show it in 3D first.`
+            : text.replace(/\s*dismiss\s*$/i, '').trim(), note);
           el.classList.add('nge-status-taken');
           el.style.display = 'none';
           continue;

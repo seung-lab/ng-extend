@@ -96,6 +96,21 @@
 }
 
 /* ── Color seed input ── */
+/* The seed box was wide enough to push every row past the panel's edge, so
+   the Fixed color swatch was all but cut off (Kim Fenley, report 621). It
+   now fits a ten digit seed and shrinks with the panel. */
+.neuroglancer-segmentation-color-seed-control {
+  min-width: 0;
+  gap: 4px;
+}
+.neuroglancer-segmentation-color-seed-control input {
+  width: 11ch;
+  min-width: 0;
+  flex: 0 1 auto;
+  box-sizing: content-box;
+}
+.neuroglancer-layer-control-container { min-width: 0; }
+input[type='color'].neuroglancer-layer-control-control { flex: none; width: 34px; height: 22px; }
 .neuroglancer-segmentation-color-seed-control input {
   background: rgba(20, 35, 60, 0.6);
   color: #7df;
