@@ -15,7 +15,7 @@ import { isTouchRef } from '../util/mobile';
 import type { BranchWay } from '../util/branch_tree';
 import { runPanelTrace, runParticleBurst, runPanelLap } from '../util/holo_trace';
 import { pointParticlesOn } from '../util/point_particles';
-import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, addBranchHighlight, NeedsSomaSide, listHighlights, undoHighlight, handPointsToUndo, clearHighlights, tintRadiusNm, setTintRadiusNm, dimChecked, setDimChecked, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, mecStyles, traceOffReason, addLabMark, addHighlightSpot, sharedLabPick, confirmSomaAtStart, goToStart, addAxonHighlight, addEdgeMarks, workingRoot, type Pick, type HighlightStyle } from '../util/highlight';
+import { highlightStyles, saveHighlightStyles, applyStyleColor, highlightNameTaken, MAX_HIGHLIGHT_STYLES, pickUnderMouse, addHighlight, addBranchHighlight, NeedsSomaSide, listHighlights, undoHighlight, handPointsToUndo, clearHighlights, tintRadiusNm, setTintRadiusNm, dimChecked, setDimChecked, highlightsShown, setHighlightsShown, onLayersChanged, showStartMarker, showEndMarker, clearStartMarker, clearLatestHighlight, mecStyles, traceOffReason, addLabMark, addHighlightSpot, addHighlightAround, spotReachNm, setSpotReachUm, oneClickHighlight, setOneClickHighlight, sharedLabPick, confirmSomaAtStart, goToStart, addAxonHighlight, addEdgeMarks, workingRoot, type Pick, type HighlightStyle } from '../util/highlight';
 import { MEC_KINDS, isMec, mecCounts, somaXyz, startXyz, mecKindOfLayer } from '../util/mec_marks';
 
 const emit = defineEmits({ hide: null });
@@ -281,6 +281,19 @@ function setShown(on: boolean) {
   shown.value = on;
   setHighlightsShown(on);
 }
+/** One click colors a stretch of the branch around it (Ames 2026-11-24),
+ *  instead of a start point and an end point. */
+const oneClick = ref(oneClickHighlight());
+function setOneClick(on: boolean) {
+  oneClick.value = on;
+  setOneClickHighlight(on);
+  if (on && first.value && !busy.value) { first.value = null; branchWay.value = null; clearStartMarker(); }
+}
+const spotUm = ref(spotReachNm() / 1000);
+function onSpotInput(e: Event) {
+  const v = Number((e.target as HTMLInputElement).value);
+  if (v > 0) { spotUm.value = v; setSpotReachUm(v); }
+}
 
 // The crosshair cursor shows while a click would place a point.
 const ctrlHeld = ref(false);
@@ -336,6 +349,10 @@ async function place(x: number, y: number) {
   if (!style.lab && (noTrace.value || isOneClickStyle(style))) {
     try { await addHighlightSpot(pick, style); refresh(); say(`${style.label} spot placed.`); }
     catch (e: any) { say(e?.message || 'Could not place that spot.', true); }
+    return;
+  }
+  if (!style.lab && oneClick.value && !first.value) {
+    await trace(wanted => addHighlightAround(pick, style, spotUm.value * 1000).then(n => (wanted() ? n : 0)), 'pieces');
     return;
   }
   if (style.lab) {
@@ -616,6 +633,9 @@ onMounted(() => {
   // every point (Ames 2026-10-18: "highlight doesn't work"). Merge and Cut
   // stay open, with H+click for highlights.
   if (document.querySelector('.graphene-find-path')) exitGrapheneTool();
+  // Opening Highlight shows your highlights (Ames 2026-11-24: it kept opening
+  // on Hide). Hide still works while the box is open.
+  if (!highlightsShown()) setShown(true);
   refresh();
   stopTouchTaps = claimTouchTaps((x, y) => (editToolOpen() ? null : () => { void place(x, y); }));
   stopLayerWatch = onLayersChanged(() => { shown.value = highlightsShown(); refresh(); });
@@ -771,7 +791,7 @@ onBeforeUnmount(() => {
                 title="Drop the start point you placed. Finished marks stay. (Esc)">Cancel this mark</button>
         <button v-else-if="busy" class="nge-hl-btn nge-hl-btn--main" @click="stopTracing"
                 title="Stop waiting for this path. Nothing is marked.">Stop tracing</button>
-        <span v-else class="nge-hl-step">{{ labOn ? `${isTouchRef ? 'Tap' : 'Ctrl + click'} to mark ${styleOf().label}` : isTouchRef ? 'Tap the start' : 'Ctrl + click the start' }}</span>
+        <span v-else class="nge-hl-step">{{ labOn ? `${isTouchRef ? 'Tap' : 'Ctrl + click'} to mark ${styleOf().label}` : oneClick ? (isTouchRef ? 'Tap the branch' : 'Ctrl + click the branch') : isTouchRef ? 'Tap the start' : 'Ctrl + click the start' }}</span>
         <button class="nge-hl-btn" :disabled="busy || (!markCount && !handCount && !first)" @click="undo">Undo</button>
         <button class="nge-hl-btn nge-hl-btn--danger" :disabled="busy || !markCount" @click="clearAll"
                 title="Remove every highlight mark in this view. Asks first. Your segments and lab marks stay.">Clear all</button>
@@ -783,6 +803,18 @@ onBeforeUnmount(() => {
         <span>Color reach</span>
         <input type="range" min="0.5" max="8" step="0.5" :value="tintUm" @input="onTintInput" />
         <span class="nge-hl-width-val">{{ tintUm }} <span class="nge-hl-unit">µm</span></span>
+      </label>
+      <div v-if="!labOn" class="nge-hl-show3d" title="Two points: click where a stretch starts, then where it ends. One click: each click colors the branch around it, no start point.">
+        <span id="nge-hl-oneclick-label">Click</span>
+        <div class="nge-hl-switch" role="radiogroup" aria-labelledby="nge-hl-oneclick-label" :data-on="oneClick ? 'hide' : 'show'">
+          <button type="button" role="radio" :aria-checked="oneClick ? 'false' : 'true'" class="nge-hl-switch-opt" @click="setOneClick(false)">Two points</button>
+          <button type="button" role="radio" :aria-checked="oneClick ? 'true' : 'false'" class="nge-hl-switch-opt" @click="setOneClick(true)">One click</button>
+        </div>
+      </div>
+      <label v-if="oneClick && !labOn" class="nge-hl-width" title="How far along the branch one click colors, each way from the click.">
+        <span>Each way</span>
+        <input type="range" min="1" max="15" step="1" :value="spotUm" @input="onSpotInput" />
+        <span class="nge-hl-width-val">{{ spotUm }} <span class="nge-hl-unit">µm</span></span>
       </label>
       <!-- Dim checked (Ames 2026-11-02: "hide what's done"): Checked stretches
            go a dim grey on the cell, so what is left to check stands out. -->

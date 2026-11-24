@@ -9,7 +9,7 @@ import { ref } from 'vue';
 import { makeLayer } from 'neuroglancer/layer';
 import { SegmentationUserLayer } from 'neuroglancer/segmentation_user_layer';
 import { ngeGrapheneSelectionUnderMouse, ngeGrapheneFindPath, ngeGrapheneBranchGraph, ngeGraphenePieceOf, SegmentSelection } from 'neuroglancer/datasource/graphene/frontend';
-import { branchSegments, nearestPiece, piecesBeyond, edgeEnds, type BranchGraph, type BranchWay } from './branch_tree';
+import { branchSegments, nearestPiece, piecesBeyond, edgeEnds, stretchAround, type BranchGraph, type BranchWay } from './branch_tree';
 import { MEC_KINDS, MEC_AIS, MEC_EDGE, MEC_SOMA, startXyz, isMec, meshEdgeSpots, maskEdgeSpots, cellMeshLoad, dataBoundsNm, AXON_LAYER, mecKindOfLayer, mecLayers, segBoundsNm, EDGE_NM, type MecKind } from './mec_marks';
 import { currentSegLayer, currentSegLayerName, findDatasetBySegName, findDatasetByCanonical, canonicalDataset } from '../datasets';
 import { useUserPreferencesStore, useProofreadingBackendStore } from '../store';
@@ -625,6 +625,47 @@ export async function addHighlightSpot(pick: Pick, style: HighlightStyle): Promi
   setLatestMark(mark);
 }
 
+/** One click, a stretch of the branch around it in the color (Ames
+ *  2026-11-24), from the cell's branch map: no start point, no second click.
+ *  Returns how many line pieces were drawn. */
+export async function addHighlightAround(pick: Pick, style: HighlightStyle, reachNm = spotReachNm()): Promise<number> {
+  const viewer = viewerOf();
+  const layer = currentSegLayer()?.layer;
+  if (!(layer instanceof SegmentationUserLayer)) throw new Error('No segmentation layer is open.');
+  refuseTrace();
+  const scalesNm: number[] = Array.from(viewer.coordinateSpace.value.scales as Float64Array).map(x => x / 1e-9);
+  const toNm = (g: ArrayLike<number>) => [0, 1, 2].map(i => g[i] * (scalesNm[i] || 1));
+  const graph = await branchGraphOf(layer, pick.root);
+  let id: string | undefined;
+  try { id = (await ngeGraphenePieceOf(layer, pick.selection)) || undefined; } catch { /* the nearest piece, then */ }
+  const from = id && graph.points.has(id) ? id : nearestPiece(graph, toNm(pick.global))?.id;
+  if (!from) throw new Error('That point is not on a mapped part of this cell.');
+  const segments = stretchAround(graph, from, toNm(pick.global), reachNm);
+  if (!segments.length) throw new Error('No branch was found around that point. Try a spot a little farther along the branch.');
+  const src = await strokeSource(style);
+  const mark = `${ID_PREFIX}${Date.now().toString(36)}`;
+  addStroke(src, mark, segments, scalesNm, `${style.label}, one click: cell ${pick.root}`);
+  setLatestMark(mark);
+  return segments.length;
+}
+const SPOT_KEY = 'nge_highlight_spot_um';
+/** How far along the branch one click colors, each way, in nanometers. */
+export function spotReachNm(): number {
+  try { const v = Number(localStorage.getItem(SPOT_KEY)); if (v > 0) return v * 1000; } catch { /* */ }
+  return 3000;
+}
+export function setSpotReachUm(um: number) {
+  try { localStorage.setItem(SPOT_KEY, String(um)); } catch { /* */ }
+}
+const ONE_CLICK_KEY = 'nge_highlight_one_click';
+/** Whether a click colors a stretch around itself, instead of starting a two click mark. */
+export function oneClickHighlight(): boolean {
+  try { return localStorage.getItem(ONE_CLICK_KEY) === '1'; } catch { return false; }
+}
+export function setOneClickHighlight(on: boolean) {
+  try { localStorage.setItem(ONE_CLICK_KEY, on ? '1' : '0'); } catch { /* */ }
+}
+
 export async function addLabMark(pick: Pick, style: HighlightStyle): Promise<void> {
   const kind = kindOf(style);
   if (!kind) throw new Error("That is not one of the lab's marks.");
@@ -1071,11 +1112,14 @@ const DIM_KEY = 'nge_highlight_dim_checked';
  *  stretches marked Checked are drawn as a dim grey on the cell instead of
  *  their colour, so what is left to check stands out, with the Lantern on or
  *  off. Off by default; remembered in this browser. */
+// Dim lasts for this visit only (Ames 2026-11-24: Highlight kept opening on
+// Dim, a choice remembered from long before). A new visit opens on Color.
+try { localStorage.removeItem(DIM_KEY); } catch { /* */ }
 export function dimChecked(): boolean {
-  try { return localStorage.getItem(DIM_KEY) === '1'; } catch { return false; }
+  try { return sessionStorage.getItem(DIM_KEY) === '1'; } catch { return false; }
 }
 export function setDimChecked(on: boolean) {
-  try { localStorage.setItem(DIM_KEY, on ? '1' : '0'); } catch { /* */ }
+  try { sessionStorage.setItem(DIM_KEY, on ? '1' : '0'); } catch { /* */ }
   scheduleTint();
 }
 /** How far from the path the tint reaches, in nanometres. */

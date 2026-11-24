@@ -407,3 +407,51 @@ export function densestPiece(graph: BranchGraph, radiusNm = 6000): string | unde
   }
   return best;
 }
+
+/**
+ * The stretch of the cell around one click (Ames 2026-11-24: "one-click
+ * highlight a section of a branch without a giant annotation point"): every
+ * way along the cell from the clicked piece, out to `reachNm` along the
+ * branch, the last step cut short where the reach runs out. At a fork it
+ * runs a little way up each side, as far as the reach goes.
+ */
+export function stretchAround(graph: BranchGraph, from: string, fromPoint: number[], reachNm: number): Segment[] {
+  const adj = neighbours(graph);
+  const at = graph.points.get(from);
+  if (!at) return [];
+  const len = (p: number[], q: number[]) => Math.hypot(p[0] - q[0], p[1] - q[1], p[2] - q[2]);
+  const dist = new Map<string, number>([[from, len(fromPoint, at)]]);
+  const segments: Segment[] = [];
+  if (len(fromPoint, at) > 1) segments.push([fromPoint, at]);
+  const queue: string[] = [from];
+  const done = new Set<string>();
+  const drawn = new Set<string>();
+  while (queue.length) {
+    // The nearest piece not yet walked from (a few hundred pieces at most).
+    let bi = 0;
+    for (let i = 1; i < queue.length; i++) if (dist.get(queue[i])! < dist.get(queue[bi])!) bi = i;
+    const u = queue.splice(bi, 1)[0];
+    if (done.has(u)) continue;
+    done.add(u);
+    const du = dist.get(u)!;
+    const pu = graph.points.get(u);
+    if (!pu || du >= reachNm) continue;
+    for (const v of adj.get(u) ?? []) {
+      const pv = graph.points.get(v);
+      if (!pv) continue;
+      const key = u < v ? `${u}|${v}` : `${v}|${u}`;
+      const step = len(pu, pv);
+      const dv = du + step;
+      if (!drawn.has(key)) {
+        drawn.add(key);
+        if (dv <= reachNm) segments.push([pu, pv]);
+        else if (step > 0) {
+          const t = (reachNm - du) / step;
+          segments.push([pu, pu.map((x, i) => x + (pv[i] - x) * t)]);
+        }
+      }
+      if (dv < (dist.get(v) ?? Infinity)) { dist.set(v, dv); if (dv < reachNm) queue.push(v); }
+    }
+  }
+  return segments;
+}
