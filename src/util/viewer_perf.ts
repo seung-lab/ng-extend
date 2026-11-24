@@ -20,6 +20,12 @@ import { useUserPreferencesStore, type ViewerPerf } from '../store';
 
 type Key = keyof ViewerPerf;
 
+/** Pyr's graphics memory default: 1 GB (it was 2 GB). Merges and cuts lagged
+ *  on computers whose graphics card could not hold that much (Ames
+ *  2026-11-24). Views saved before carry the old 2 GB in them. */
+export const PYR_GPU_MEMORY = 1e9;
+const OLD_PYR_GPU_MEMORY = 2e9;
+
 interface Trackable<T> { value: T; changed: { add(cb: () => void): () => void } }
 
 function trackables(viewer: any): Record<Key, Trackable<any> | undefined> {
@@ -60,6 +66,12 @@ export function startViewerPerf(viewer: any) {
     if (panelOpen()) {
       // The player's own change, in Viewer settings: keep it.
       if (valid(k, v) && prefs.prefs.viewerPerf?.[k] !== v) prefs.save({ viewerPerf: { ...(prefs.prefs.viewerPerf || {}), [k]: v } });
+      return;
+    }
+    // A view saved with the old 2 GB default: the new one, unless the player
+    // chose a graphics memory of their own.
+    if (k === 'gpuMemoryLimit' && v === OLD_PYR_GPU_MEMORY && !valid(k, prefs.prefs.viewerPerf?.gpuMemoryLimit)) {
+      queueMicrotask(() => { if (t[k]!.value === OLD_PYR_GPU_MEMORY) t[k]!.value = PYR_GPU_MEMORY; });
       return;
     }
     // A view being loaded reset it: put the player's value back, once the

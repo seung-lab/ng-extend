@@ -883,7 +883,7 @@ const STATE_DEFECT_VIEW = {
   ],
   "showAxisLines": false,
   "showSlices": false,
-  "gpuMemoryLimit": 2000000000,
+  "gpuMemoryLimit": 1000000000,
   "systemMemoryLimit": 3000000000,
   "selectedLayer": {
     "layer": "pinky_training6"

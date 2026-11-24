@@ -457,7 +457,7 @@ export const useLayersStore = defineStore('layers', () => {
     viewer = v;
 
     // set default values in settings
-    viewer.chunkQueueManager.capacities.gpuMemory.sizeLimit.value = 2e9;
+    viewer.chunkQueueManager.capacities.gpuMemory.sizeLimit.value = 1e9;  // PYR_GPU_MEMORY in util/viewer_perf.ts
     viewer.chunkQueueManager.capacities.systemMemory.sizeLimit.value = 3e9;
     // 2D detail: a saved view can carry crossSectionRenderScale above 1, which draws the image
     // at a coarser level, counts as fully loaded and never sharpens (seen on practice views,

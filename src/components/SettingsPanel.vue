@@ -257,7 +257,7 @@ async function restoreDefaults() {
       if (q) {
         q.enablePrefetch.value = true;
         q.capacities.download.itemLimit.value = 100;
-        q.capacities.gpuMemory.sizeLimit.value = 2e9;
+        q.capacities.gpuMemory.sizeLimit.value = 1e9;
         q.capacities.systemMemory.sizeLimit.value = 3e9;
       }
     } catch { /* the reload still resets the rest */ }
