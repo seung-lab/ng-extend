@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-24T16:09:00Z",
+      "title": "toknow's ideas, and Merger Mysteries unstuck",
+      "items": [
+        "Thanks to toknow, your submitted Cilia Quest cells now list the newest first.",
+        "The swap button in the Cilia Quest bar, also toknow's idea, now always shows on a quest and has a fresh look. It works once you place a Basal body or Daughter centriole mark.",
+        "Merger Mysteries are now 12: one mystery could no longer be opened, and players whose last mystery it was got stuck waiting. It is gone, so they can finish."
+      ]
+    },
+    {
       "at": "2026-11-24T15:53:00Z",
       "title": "Brighter streak flames",
       "items": [
