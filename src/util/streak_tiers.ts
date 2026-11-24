@@ -24,7 +24,7 @@ export const FLAME_TIERS: FlameTier[] = [
   { days: 30, id: 'plasma', name: 'Plasma', rgb: '80,232,255' },
   { days: 50, id: 'starfire', name: 'Starfire', rgb: '214,120,255' },
   { days: 100, id: 'nova', name: 'Nova', rgb: '255,140,220' },
-  { days: 365, id: 'solar', name: 'Solar', rgb: '255,214,90' },
+  { days: 365, id: 'solar', name: 'Solar', rgb: '236,244,255' },
 ];
 
 /** Index into FLAME_TIERS for a streak of this many days. */

@@ -2,6 +2,15 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-24T15:53:00Z",
+      "title": "Brighter streak flames",
+      "items": [
+        "The streak card now shows all seven flames in a row, so you can see which ones you have passed and which are ahead.",
+        "The Kindled flame (7 days) is a bright yellow gold with rising embers, so it no longer looks like a Spark.",
+        "The Solar flame (365 days) burns white hot, and runs through every flame's color when you open the card."
+      ]
+    },
+    {
       "at": "2026-11-24T15:50:00Z",
       "title": "Lighter on your graphics card",
       "items": [
