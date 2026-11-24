@@ -259,9 +259,18 @@ function startTutorial() {
 /** The Instructions box with the lab's steps (Ames 2026-10-13), in a box of
  *  its own with room for a picture since 2026-11-06 (QuestInstructions). */
 const showHelp = ref(false);
+/** The header (title, Training, Instructions, the lead, the tallies) folds
+ *  to one line (Ames 2026-11-24: "it takes a lot of room"). Kept per browser,
+ *  like the Cell Library's own tab fold. */
+const AQ_HEAD_FOLD_KEY = 'nge_aq_head_folded_v1';
+const headFolded = ref<boolean>((() => { try { return localStorage.getItem(AQ_HEAD_FOLD_KEY) === '1'; } catch { return false; } })());
+function setHeadFolded(v: boolean) {
+  headFolded.value = v;
+  try { localStorage.setItem(AQ_HEAD_FOLD_KEY, v ? '1' : '0'); } catch { /* private mode */ }
+}
 // Open to edit, from Ames's note for an edit (src/text_edit_links.ts).
 let stopTextEdit: (() => void) | null = null;
-onMounted(() => { stopTextEdit = onTextEditAsked(key => { if (key === 'quest.retina_cilia.steps') showHelp.value = true; }); });
+onMounted(() => { stopTextEdit = onTextEditAsked(key => { if (key === 'quest.retina_cilia.steps') { headFolded.value = false; showHelp.value = true; } }); });
 onUnmounted(() => stopTextEdit?.());
 /** The first time a player opens the tab, the Instructions button is lit
  *  once, a few seconds in, so it is not missed (Ames 2026-10-13). Once per
@@ -539,21 +548,34 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 
 <template>
   <div class="nge-aq" :class="{ 'nge-aq--slim': slim }">
-    <div v-if="!slim" class="nge-aq-head">
+    <div v-if="!slim" class="nge-aq-head" :class="{ 'nge-aq-head--folded': headFolded }">
       <div class="nge-aq-titlerow">
-        <div class="nge-aq-title">{{ QUEST_TITLE }}</div>
+        <button class="nge-aq-title nge-aq-title--fold" :aria-expanded="headFolded ? 'false' : 'true'"
+                :title="headFolded ? 'Show the quest details' : 'Fold the quest details away'" @click="setHeadFolded(!headFolded)">{{ QUEST_TITLE }}</button>
+        <span v-if="headFolded && backend.userId && hasCells" class="nge-aq-foldtally">
+          <span class="nge-aq-tally" :class="{ 'nge-aq-tally--full': atLimit }" :title="`You can hold ${QUEST_CLAIM_LIMIT} cells at a time`">Holding <b>{{ mine.length }}</b> of {{ QUEST_CLAIM_LIMIT }}</span>
+          <span class="nge-aq-tally" title="Cells you have submitted on this quest">Submitted <b>{{ mineDone }}</b></span>
+          <span v-if="mineHeld" class="nge-aq-tally nge-aq-tally--held" title="A reviewer sent these back">Update <b>{{ mineHeld }}</b></span>
+        </span>
         <span class="nge-aq-titlebtns">
+          <template v-if="!headFolded">
           <button ref="infoEl" class="nge-aq-info nge-aq-info--tut" :class="{ 'nge-aq-info--nudge': nudging }" @click="startTutorial" title="Cilia Quest Training: learn on an example cell, with your marks checked">
             <span class="nge-aq-info-i" aria-hidden="true">▶</span><span class="nge-aq-info-word">Training</span>
           </button>
           <button class="nge-aq-info" :class="{ 'nge-aq-info--open': showHelp }" @click="toggleHelp" title="How to do a Cilia Quest">
             <span class="nge-aq-info-i" aria-hidden="true">i</span><span class="nge-aq-info-word">Instructions</span>
           </button>
+          </template>
+          <button class="nge-aq-headfold" :aria-expanded="headFolded ? 'false' : 'true'"
+                  :aria-label="headFolded ? 'Show the quest details' : 'Fold the quest details away'"
+                  :title="headFolded ? 'Show the quest details' : 'Fold the quest details away'" @click="setHeadFolded(!headFolded)">
+            <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path :d="headFolded ? 'M2.5 4.5 6 8l3.5-3.5' : 'M2.5 7.5 6 4l3.5 3.5'" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>
+          </button>
         </span>
       </div>
-      <EditableText text-key="quest.retina_cilia.lead" :original="QUEST_LEAD" text-class="nge-aq-lead" @action="onQuestTextAction" />
-      <QuestInstructions v-if="showHelp" :lead="QUEST_LEAD" :steps="QUEST_STEPS" @close="showHelp = false" @action="onQuestTextAction" />
-      <div v-if="backend.userId" class="nge-aq-headrow">
+      <EditableText v-if="!headFolded" text-key="quest.retina_cilia.lead" :original="QUEST_LEAD" text-class="nge-aq-lead" @action="onQuestTextAction" />
+      <QuestInstructions v-if="showHelp && !headFolded" :lead="QUEST_LEAD" :steps="QUEST_STEPS" @close="showHelp = false" @action="onQuestTextAction" />
+      <div v-if="backend.userId && !headFolded" class="nge-aq-headrow">
         <button v-if="!play.on && available.length" class="nge-aq-play" @click="startPlay('quests')"
                 title="Play: claims a quest cell for you and opens it. After Submit, the next one.">
           <svg width="10" height="10" viewBox="0 0 12 12" aria-hidden="true"><path d="M3 1.8v8.4L10 6z" fill="currentColor"/></svg>Play here
@@ -801,6 +823,14 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
   cursor: pointer; transition: background 0.15s, color 0.15s, box-shadow 0.15s, border-color 0.15s;
 }
 .nge-aq-titlebtns { display: inline-flex; gap: 6px; flex-shrink: 0; }
+/* The header fold, drawn as the Cell Library's tab fold (nge-cl-tabsfold). */
+.nge-aq-head--folded { padding-bottom: 10px; }
+.nge-aq-title--fold { background: none; border: 0; padding: 0; margin: 0; cursor: pointer; text-align: left; white-space: nowrap; }
+.nge-aq-title--fold:hover { color: #8fd6ff; }
+.nge-aq-foldtally { display: inline-flex; align-items: center; gap: 10px; flex: 1 1 auto; min-width: 0; margin-left: 6px; white-space: nowrap; overflow: hidden; }
+.nge-aq-headfold { display: inline-flex; align-items: center; justify-content: center; height: 24px; padding: 0 6px;
+  border: 1px solid rgba(127, 190, 255, 0.28); border-radius: 6px; background: transparent; color: #a9c3e0; cursor: pointer; }
+.nge-aq-headfold:hover { border-color: rgba(127, 216, 255, 0.6); background: rgba(74, 158, 255, 0.12); color: #e6f0ff; }
 .nge-aq-info--slim { padding: 0 3px; margin-right: 6px; flex-shrink: 0; }
 .nge-aq-info--tut .nge-aq-info-i { font-size: 8px; padding-left: 1px; }
 .nge-aq-info-i {
