@@ -367,8 +367,8 @@ const swapShown = ref(false);
 const swapNote = ref('');
 let swapTimer: ReturnType<typeof setInterval> | undefined;
 let swapNoteTimer: ReturnType<typeof setTimeout> | undefined;
-// Shown whenever the quest has both layers, so players know it is there
-// (Ames 2026-11-24: "where should I be seeing it?"); it works once a mark is in.
+// Shown once there is a mark to swap (Ames 2026-11-24: "only once you've
+// labeled them, as you originally had it").
 const swapLook = () => { swapShown.value = hasCentrioleLayers(); swapReady.value = canSwapCentrioles(); };
 onMounted(() => { swapLook(); swapTimer = setInterval(swapLook, 1000); });
 onUnmounted(() => { clearInterval(swapTimer); clearTimeout(swapNoteTimer); });
@@ -648,8 +648,8 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
                   <span>{{ savedLine(r) }}</span>
                   <button v-if="isActive(r)" class="nge-aq-save" :disabled="questWork.saving === r.segmentId" @click="saveNow(r)" title="Save your work on this quest now. It is also saved as you place annotations.">Save</button>
                 </span>
-                <button v-if="isActive(r) && swapShown" class="nge-aq-btn nge-aq-btn--swap" :disabled="!swapReady" @click.stop="swapBbDc"
-                        :title="swapReady ? 'Swap the Basal body and Daughter centriole marks' : 'Swap the Basal body and Daughter centriole marks (place a mark first)'" aria-label="Swap the Basal body and Daughter centriole marks">
+                <button v-if="isActive(r) && swapReady" class="nge-aq-btn nge-aq-btn--swap" @click.stop="swapBbDc"
+                        title="Swap the Basal body and Daughter centriole marks" aria-label="Swap the Basal body and Daughter centriole marks">
                   <svg class="nge-aq-swap-icon" width="34" height="18" viewBox="0 0 34 18" aria-hidden="true">
                     <defs>
                       <radialGradient id="nge-swap-gold" cx="35%" cy="35%" r="70%"><stop offset="0" stop-color="#fff6c4"/><stop offset="0.45" stop-color="#f5d142"/><stop offset="1" stop-color="#c79a12"/></radialGradient>
