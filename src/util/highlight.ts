@@ -1404,6 +1404,10 @@ export function startHighlightTint(viewer: any) {
       // The lab's points stay in sight in 3D, as the lab placed them.
       if (style.lab || styled.has(src)) continue;
       styled.add(src);
+      // A view saved with its highlights hidden opens with them shown (Ames
+      // 2026-11-24: "I switched off of it yesterday and then today it was on
+      // as default again"). Hiding one later in the visit stays as chosen.
+      try { if (managed.visible === false) managed.setVisible(true); } catch { /* */ }
       // With the surface tinted, the stroke itself is not drawn in 3D; it
       // still marks the path in the 2D views.
       try {
