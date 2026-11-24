@@ -16,7 +16,7 @@ import { onTextEditAsked } from '../text_edit_links';
 import { QUEST_TITLE, QUEST_LEAD, QUEST_GUIDE_URL, QUEST_VIDEO_URL, QUEST_STATUSES, QUEST_SPLIT_MERGED, QUEST_CLAIM_LIMIT, listQuests, claimQuest, releaseQuest, submitQuest, annotationCountInView, dressQuestLayers, layerSnapshot, nameKey, cellTypeForPlayers, type QuestRow, type QuestCounts } from '../annotation_quests';
 import { openStartLink } from '../util/start_link';
 import CrosshairHelp from './CrosshairHelp.vue';
-import { canSwapCentrioles, swapCentrioles } from '../annotation_quests';
+import { canSwapCentrioles, hasCentrioleLayers, swapCentrioles } from '../annotation_quests';
 import { questWork, setActiveQuest, markQuestOnScreen, questOnScreen, saveQuestWork, loadQuestWork, readSavedQuestWork, markQuestWorkClean } from '../annotation_quests';
 import { snapshotDisplay, restoreDisplayAfterLoad, keepDisplayEnabled } from '../util/keep_display';
 import { mintShortStateLink } from '../util/state_link';
@@ -363,10 +363,14 @@ async function saveNow(r: QuestRow) {
 // Swap the Basal body and Daughter centriole marks (toknow's idea, report
 // 622): shown once there is something in those layers to trade.
 const swapReady = ref(false);
+const swapShown = ref(false);
 const swapNote = ref('');
 let swapTimer: ReturnType<typeof setInterval> | undefined;
 let swapNoteTimer: ReturnType<typeof setTimeout> | undefined;
-onMounted(() => { swapReady.value = canSwapCentrioles(); swapTimer = setInterval(() => { swapReady.value = canSwapCentrioles(); }, 1000); });
+// Shown whenever the quest has both layers, so players know it is there
+// (Ames 2026-11-24: "where should I be seeing it?"); it works once a mark is in.
+const swapLook = () => { swapShown.value = hasCentrioleLayers(); swapReady.value = canSwapCentrioles(); };
+onMounted(() => { swapLook(); swapTimer = setInterval(swapLook, 1000); });
 onUnmounted(() => { clearInterval(swapTimer); clearTimeout(swapNoteTimer); });
 function swapBbDc() {
   const n = swapCentrioles();
@@ -644,8 +648,8 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
                   <span>{{ savedLine(r) }}</span>
                   <button v-if="isActive(r)" class="nge-aq-save" :disabled="questWork.saving === r.segmentId" @click="saveNow(r)" title="Save your work on this quest now. It is also saved as you place annotations.">Save</button>
                 </span>
-                <button v-if="isActive(r) && swapReady" class="nge-aq-btn nge-aq-btn--swap" @click.stop="swapBbDc"
-                        title="Swap the Basal body and Daughter centriole marks, for when the two were placed the wrong way round" aria-label="Swap the Basal body and Daughter centriole marks">
+                <button v-if="isActive(r) && swapShown" class="nge-aq-btn nge-aq-btn--swap" :disabled="!swapReady" @click.stop="swapBbDc"
+                        :title="swapReady ? 'Swap the Basal body and Daughter centriole marks, for when the two were placed the wrong way round' : 'Swap Basal body and Daughter centriole: works once you have placed a mark in either'" aria-label="Swap the Basal body and Daughter centriole marks">
                   <svg width="30" height="16" viewBox="0 0 30 16" aria-hidden="true">
                     <circle cx="6" cy="8" r="4" fill="#f5d142"/><circle cx="24" cy="8" r="4" fill="#e06060"/>
                     <path d="M9 4.2 Q15 0.5 21 4.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M19.2 2.6 L21.3 4.4 L18.6 5.1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
@@ -785,6 +789,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
    showed through ("why does this player have this weird type?", 2026-11-24). */
 .nge-aq-btn--swap { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; color: #cfe4fa; }
 .nge-aq-swap-note { font-size: 12px; color: #a6ffd6; }
+.nge-aq-btn--swap:disabled { opacity: 0.45; cursor: default; }
 .nge-aq-head { padding: 10px 12px 8px; border-bottom: 1px solid rgba(120, 140, 255, 0.08); display: flex; flex-direction: column; gap: 5px; }
 /* Sizes are in px (Ames 2026-10-13: "font is so tiny"): the panel's em
    chain made them smaller than they looked in the stylesheet. */

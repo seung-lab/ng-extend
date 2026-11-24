@@ -486,6 +486,8 @@ function annotationsOf(src: any): any[] {
   try { for (const a of src) out.push(a); } catch { /* none */ }
   return out;
 }
+/** Whether both layers are in the view (the swap button shows). */
+export function hasCentrioleLayers(): boolean { return !!centrioleSources(); }
 /** Whether the swap has anything to do: both layers there, a mark in at least one. */
 export function canSwapCentrioles(): boolean {
   const s = centrioleSources();
