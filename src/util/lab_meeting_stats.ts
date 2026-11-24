@@ -10,6 +10,7 @@
  */
 export interface Month { m: string; label: string; edits: number; cells: number; joined: number; }
 export interface TutorialRow { name: string; players: number; }
+export interface StreakRow { name: string; days: number; live: boolean; }
 export interface LabStats {
   signedIn: number;
   editors: number;
@@ -28,6 +29,8 @@ export interface LabStats {
   byDataset: { retina: number; mec: number; sandbox: number };
   commits: number | null;
   deploys: number | null;
+  /** Longest daily streaks of the alpha testers, staff left out. */
+  streaks: StreakRow[];
 }
 
 /** The last lab meeting was in May, so "then" is everything up to the end of May. */
@@ -73,14 +76,27 @@ export const SNAPSHOT: LabStats = {
   reports: 677,
   topStreak: 46,
   playerDays: 636,
-  tutorialsDone: 444,
+  tutorialsDone: 194,
   tutorialPlayers: 57,
   tutorials: tutorialRows(SNAPSHOT_TUTORIALS),
   months: MONTHS,
   byDataset: { retina: 50683, mec: 7374, sandbox: 2909 },
   commits: null,
   deploys: null,
+  streaks: [
+    { name: 'Krzysztof Kruk', days: 46, live: true },
+    { name: 'Nseraf', days: 39, live: true },
+    { name: 'AzureJay', days: 30, live: true },
+    { name: 'toknow', days: 30, live: false },
+    { name: 'Giedrius Trakimas', days: 25, live: true },
+    { name: 'st0ck53y', days: 21, live: true },
+    { name: 'hi529', days: 19, live: true },
+    { name: 'Kim Fenley', days: 13, live: false },
+    { name: 'annkri', days: 13, live: false },
+  ],
 };
+/** Staff, left off the streak board. */
+const STAFF = new Set(['Amy R. Sterling']);
 
 /** Everything up to and including the last lab meeting's month. */
 export function thenTotals(s: LabStats) {
@@ -96,16 +112,17 @@ export function thenTotals(s: LabStats) {
  *  for the rest. Never throws. The newest month absorbs any change, so the
  *  monthly history still adds up to the total. */
 export async function loadLabStats(): Promise<LabStats> {
-  const s: LabStats = { ...SNAPSHOT, months: SNAPSHOT.months.map(m => ({ ...m })), byDataset: { ...SNAPSHOT.byDataset } };
+  const s: LabStats = { ...SNAPSHOT, months: SNAPSHOT.months.map(m => ({ ...m })), byDataset: { ...SNAPSHOT.byDataset }, streaks: SNAPSHOT.streaks.map(r => ({ ...r })) };
   const settle = <T,>(p: PromiseLike<T>) => Promise.resolve(p).then(v => v, () => null);
   try {
     const { supabase } = await import('../supabase');
-    const [prog, tuts, users, chats, reports] = await Promise.all([
+    const [prog, tuts, users, chats, reports, streakRows] = await Promise.all([
       settle(supabase.from('community_progress').select('track,count')),
       settle(supabase.from('tutorial_completions').select('tutorial,user_id').limit(20000)),
       settle(supabase.from('users').select('id', { count: 'exact', head: true })),
       settle(supabase.from('chat_messages').select('id', { count: 'exact', head: true })),
       settle(supabase.from('site_issues').select('id', { count: 'exact', head: true })),
+      settle(supabase.from('users').select('display_name,username,longest_streak,current_streak').gte('longest_streak', 7).order('longest_streak', { ascending: false }).limit(20)),
     ]);
     const rows = (prog as any)?.data as { track: string; count: number }[] | undefined;
     for (const r of rows ?? []) {
@@ -119,7 +136,7 @@ export async function loadLabStats(): Promise<LabStats> {
     last.cells = Math.max(0, s.cells - sum('cells'));
 
     const t = (tuts as any)?.data as { tutorial: number; user_id: string }[] | undefined;
-    if (t && t.length >= SNAPSHOT.tutorialsDone) {
+    if (t && t.length) {
       const per = new Map<number, Set<string>>(), all = new Set<string>();
       for (const r of t) {
         if (!per.has(r.tutorial)) per.set(r.tutorial, new Set());
@@ -128,7 +145,9 @@ export async function loadLabStats(): Promise<LabStats> {
       const counts: Record<number, number> = {};
       per.forEach((v, k) => { if (NAMES[k]) counts[k] = v.size; });
       s.tutorials = tutorialRows(counts);
-      s.tutorialsDone = t.length;
+      // Each player once per tutorial: replays are not new finishes (Ames 2026-11-23: 448 rows, 194 real).
+      let pairs = 0; per.forEach(v => { pairs += v.size; });
+      s.tutorialsDone = pairs;
       s.tutorialPlayers = all.size;
     }
     const n = (x: unknown) => (x as any)?.count as number | null | undefined;
@@ -139,6 +158,12 @@ export async function loadLabStats(): Promise<LabStats> {
     }
     const c = n(chats); if (c && c >= SNAPSHOT.chats) s.chats = c;
     const r = n(reports); if (r && r >= SNAPSHOT.reports) s.reports = r;
+    const sr = (streakRows as any)?.data as { display_name: string | null; username: string | null; longest_streak: number; current_streak: number }[] | undefined;
+    if (sr && sr.length) {
+      const rows = sr.map(u => ({ name: u.display_name || u.username || 'A tester', days: u.longest_streak, live: u.current_streak >= u.longest_streak }))
+        .filter(u => !STAFF.has(u.name)).slice(0, 9);
+      if (rows.length >= 3) { s.streaks = rows; s.topStreak = rows[0].days; }
+    }
   } catch { /* the snapshot stands */ }
   try {
     const { loadRepoStats } = await import('./repo_stats');
