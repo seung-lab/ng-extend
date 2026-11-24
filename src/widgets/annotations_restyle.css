@@ -746,3 +746,22 @@ textarea.neuroglancer-annotation-details-description:focus {
 
 /* An empty layer's how-to (Kim Fenley, report 618). */
 .nge-ann-empty-hint { margin: 6px 8px 4px; padding: 8px 10px; border-radius: 7px; border: 1px dashed rgba(79, 207, 255, 0.35); color: #a9cfe6; font: 400 12px/1.45 'Inter', system-ui, sans-serif; }
+
+/* ── The tab never runs past its panel (toknow, report 626) ──────────────
+   In some browsers (not Chrome) the annotation tab came out about 40px wider
+   than its side panel, so the last row button, Delete, and the end of
+   "4 annotations" sat past the window's edge. Everything in the tab is now
+   held to the panel's width: the rows' buttons sit at the panel's own edge. */
+.neuroglancer-annotations-tab,
+.neuroglancer-annotations-tab > .neuroglancer-tab-content,
+.neuroglancer-annotation-list,
+.neuroglancer-annotation-list > div,
+.neuroglancer-annotation-list > div > div {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  box-sizing: border-box;
+}
+.neuroglancer-annotations-tab { overflow-x: hidden; }
+.neuroglancer-annotation-list-entry,
+.neuroglancer-annotation-list-header { min-width: 0; max-width: 100%; box-sizing: border-box; overflow: hidden; }
+.nge-ann-top-row { min-width: 0; max-width: 100%; box-sizing: border-box; }
