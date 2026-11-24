@@ -364,7 +364,7 @@ onUnmounted(() => {
           :style="{ '--flame-px': flamePx + 'px', '--flame-scale': flameScale, '--count-px': countPx + 'px', '--tier-rgb': shown.rgb }">
       <!-- the tier's ornaments, behind and around the flame (util/streak_tiers.ts) -->
       <span v-if="shownIdx >= 1" class="nge-streak-orn-glow" aria-hidden="true"></span>
-      <span v-if="shown.id === 'solar'" class="nge-streak-orn-rays" aria-hidden="true"></span>
+      <span v-if="shown.id === 'solar'" class="nge-streak-orn-flares" aria-hidden="true"><i style="--w: 1.75; --d: 7s"></i><i class="rev" style="--w: 1.4; --d: 10s"></i></span>
       <span class="nge-streak-tint" :class="`nge-streak-tint--${shown.id}`">
         <span ref="flameEl" class="nge-streak-chip-flame">🔥</span>
         <canvas ref="fireCv" class="nge-streak-chip-canvas" aria-hidden="true"></canvas>
@@ -372,6 +372,7 @@ onUnmounted(() => {
       <span v-if="shown.id === 'plasma' || shown.id === 'starfire'" class="nge-streak-orn-orbit" aria-hidden="true">
         <i></i><i v-if="shown.id === 'starfire'" style="--o: 0.5"></i>
       </span>
+      <span v-if="shown.id === 'kindled'" class="nge-streak-orn-embers" aria-hidden="true"><i></i><i></i><i></i></span>
       <span v-if="shown.id === 'nova'" class="nge-streak-orn-crown" aria-hidden="true"><i>✦</i><i>✦</i><i>✦</i></span>
       <span class="nge-streak-chip-count">{{ days }}</span>
     </span>
@@ -402,6 +403,15 @@ onUnmounted(() => {
       </div>
       <div v-if="bestDays > days" class="nge-streak-tip-best nge-streak-tip-row" style="--i: 4">Your best: {{ bestDays }} days</div>
       <div v-else-if="days > 1" class="nge-streak-tip-best nge-streak-tip-row" style="--i: 4">🏆 Your best streak yet!</div>
+      <!-- Every flame in a row (Ames 2026-11-24): the ones passed lit, this one marked, the ones ahead dimmed. -->
+      <div class="nge-streak-tip-ladder nge-streak-tip-row" style="--i: 5">
+        <span v-for="(t, ti) in FLAME_TIERS" :key="t.id" class="nge-streak-rung"
+              :class="{ 'is-locked': ti > shownIdx, 'is-now': ti === shownIdx }"
+              :title="`${t.name} flame: ${t.days === 1 ? 'day 1' : t.days + ' days'}`">
+          <span class="nge-streak-tint" :class="`nge-streak-tint--${t.id}`"><span class="nge-streak-rung-flame">🔥</span></span>
+          <small>{{ t.days }}</small>
+        </span>
+      </div>
     </div>
   </div>
 </template>
@@ -432,7 +442,17 @@ onUnmounted(() => {
       and its fire together, so the fire, its glow and the click's sparks
       all take the tier's color. Ornaments sit outside the tint. ── */
 .nge-streak-tint { position: relative; display: inline-block; line-height: 1; z-index: 1; }
-.nge-streak-tint--kindled { filter: drop-shadow(0 0 1.5px rgba(255, 220, 120, 0.95)) saturate(1.1); }
+/* Kindled: bright yellow gold, so it reads apart from a Spark (Ames 2026-11-24) */
+.nge-streak-tint--kindled { filter: hue-rotate(24deg) saturate(1.5) brightness(1.22) drop-shadow(0 0 1.5px rgba(255, 236, 120, 1)); }
+.nge-streak-tier--kindled .nge-streak-orn-glow { scale: 1.25; background: radial-gradient(closest-side, rgba(255, 226, 90, 0.6), rgba(255, 210, 80, 0.18) 55%, rgba(255, 210, 80, 0)); }
+/* and embers rising off it */
+.nge-streak-orn-embers { position: absolute; left: 50%; top: 40%; width: 0; height: 0; z-index: 3; pointer-events: none; }
+.nge-streak-orn-embers > i { position: absolute; width: 2px; height: 2px; border-radius: 50%; background: #fff4b0; opacity: 0;
+  box-shadow: 0 0 2px 1px rgba(255, 220, 90, 0.95); animation: nge-streak-ember 1.8s ease-out infinite; }
+.nge-streak-orn-embers > i:nth-child(1) { left: calc(var(--flame-px) * -0.26); }
+.nge-streak-orn-embers > i:nth-child(2) { left: calc(var(--flame-px) * 0.18); animation-delay: -0.6s; }
+.nge-streak-orn-embers > i:nth-child(3) { left: calc(var(--flame-px) * -0.04); animation-delay: -1.2s; }
+@keyframes nge-streak-ember { 0% { transform: translateY(3px); opacity: 0; } 20% { opacity: 1; } 100% { transform: translate(2px, calc(var(--flame-px) * -0.6)); opacity: 0; } }
 .nge-streak-tint--bluecore { filter: drop-shadow(0 0 1.5px rgba(150, 215, 255, 0.8)); }
 /* the white-blue heart in the belly of the flame, like a torch */
 .nge-streak-tint--bluecore::after {
@@ -447,7 +467,18 @@ onUnmounted(() => {
   0%   { filter: hue-rotate(0deg) saturate(1.35) brightness(1.1) drop-shadow(0 0 1.5px rgba(255, 220, 245, 0.9)); }
   100% { filter: hue-rotate(360deg) saturate(1.35) brightness(1.1) drop-shadow(0 0 1.5px rgba(255, 220, 245, 0.9)); }
 }
-.nge-streak-tint--solar { filter: saturate(1.2) brightness(1.12) drop-shadow(0 0 2px rgba(255, 236, 150, 0.95)); }
+/* Solar: white hot at rest; open the card and it runs through every flame's color (Ames 2026-11-24) */
+.nge-streak-tint--solar { filter: hue-rotate(0deg) saturate(0.12) brightness(1.6) drop-shadow(0 0 2px rgba(255, 255, 255, 0.95)); }
+.nge-streak-chip--open .nge-streak-chip-fire .nge-streak-tint--solar { animation: nge-streak-solar 3s ease-in-out infinite; }
+@keyframes nge-streak-solar {
+  0%, 100% { filter: hue-rotate(0deg) saturate(0.12) brightness(1.6) drop-shadow(0 0 2px rgba(255, 255, 255, 0.95)); }
+  12% { filter: hue-rotate(0deg) saturate(1.2) brightness(1.05) drop-shadow(0 0 2px rgba(255, 150, 40, 0.9)); }
+  26% { filter: hue-rotate(18deg) saturate(1.3) brightness(1.15) drop-shadow(0 0 2px rgba(255, 204, 80, 0.9)); }
+  40% { filter: hue-rotate(200deg) saturate(1.2) brightness(1.15) drop-shadow(0 0 2px rgba(130, 205, 255, 0.9)); }
+  54% { filter: hue-rotate(168deg) saturate(1.4) brightness(1.15) drop-shadow(0 0 2px rgba(80, 232, 255, 0.9)); }
+  68% { filter: hue-rotate(238deg) saturate(1.4) brightness(1.1) drop-shadow(0 0 2px rgba(214, 120, 255, 0.9)); }
+  82% { filter: hue-rotate(300deg) saturate(1.4) brightness(1.1) drop-shadow(0 0 2px rgba(255, 140, 220, 0.9)); }
+}
 
 /* a soft halo in the tier's light, from Kindled up */
 .nge-streak-orn-glow {
@@ -455,16 +486,16 @@ onUnmounted(() => {
   translate: -50% -50%; border-radius: 50%; pointer-events: none; z-index: 0;
   background: radial-gradient(closest-side, rgba(var(--tier-rgb), 0.42), rgba(var(--tier-rgb), 0.12) 55%, rgba(var(--tier-rgb), 0) 100%);
 }
-/* Solar: a ring of sun rays turning slowly behind the flame */
-.nge-streak-orn-rays {
-  position: absolute; left: 50%; top: 56%; width: calc(var(--flame-px) * 2); height: calc(var(--flame-px) * 2);
-  margin: calc(var(--flame-px) * -1) 0 0 calc(var(--flame-px) * -1);
-  border-radius: 50%; pointer-events: none; z-index: 0;
-  background: repeating-conic-gradient(rgba(255, 226, 130, 0.75) 0deg 7deg, rgba(255, 226, 130, 0) 7deg 30deg);
-  -webkit-mask: radial-gradient(closest-side, transparent 50%, #000 60%, #000 74%, transparent 100%);
-  mask: radial-gradient(closest-side, transparent 50%, #000 60%, #000 74%, transparent 100%);
-  animation: nge-streak-spin 26s linear infinite;
+/* Solar: two thin white arcs circling the flame, each its own way */
+.nge-streak-orn-flares { position: absolute; left: 50%; top: 58%; width: 0; height: 0; pointer-events: none; z-index: 0; }
+.nge-streak-orn-flares > i {
+  position: absolute; width: calc(var(--flame-px) * var(--w)); height: calc(var(--flame-px) * var(--w));
+  left: calc(var(--flame-px) * var(--w) / -2); top: calc(var(--flame-px) * var(--w) / -2); border-radius: 50%;
+  border: 1.5px solid transparent; border-top-color: rgba(255, 255, 255, 0.95); border-left-color: rgba(200, 225, 255, 0.35);
+  filter: drop-shadow(0 0 2px rgba(220, 235, 255, 0.9)); animation: nge-streak-spin var(--d) linear infinite;
 }
+.nge-streak-orn-flares > i.rev { animation-direction: reverse; border-top-color: transparent; border-bottom-color: rgba(255, 255, 255, 0.9); border-right-color: rgba(200, 225, 255, 0.35); }
+.nge-streak-chip--open .nge-streak-orn-flares { animation: nge-streak-solar 3s ease-in-out infinite; }
 @keyframes nge-streak-spin { to { transform: rotate(360deg); } }
 /* Plasma and Starfire: sparks on a tilted orbit, passing in front of the
    flame on the near side and behind it on the far side. Two eased sweeps a
@@ -637,6 +668,15 @@ onUnmounted(() => {
 @keyframes nge-streak-level-name { 0% { opacity: 0; transform: scale(0.6); filter: brightness(2.4); } 100% { opacity: 1; transform: none; filter: none; } }
 .nge-streak-tip-tier { margin-top: 6px; font-size: 11.5px; color: #c4d2e4; }
 .nge-streak-tip-tier b { color: rgb(var(--tier-rgb)); font-weight: 700; }
+/* the flame ladder */
+.nge-streak-tip-ladder { display: flex; justify-content: space-between; align-items: flex-end; margin-top: 10px; padding: 9px 2px 4px; border-top: 1px solid rgba(255, 214, 150, 0.15); }
+.nge-streak-rung { position: relative; display: flex; flex-direction: column; align-items: center; gap: 2px; width: 28px; }
+.nge-streak-rung-flame { display: inline-block; font-size: 18px; line-height: 1; }
+.nge-streak-rung small { font-size: 9.5px; color: #8fa3c4; font-variant-numeric: tabular-nums; }
+.nge-streak-rung.is-locked .nge-streak-tint { opacity: 0.4; }
+.nge-streak-rung.is-locked .nge-streak-rung-flame { filter: grayscale(1) brightness(0.6); }
+.nge-streak-rung.is-now small { color: #ffd38a; font-weight: 800; }
+.nge-streak-rung.is-now::after { content: ''; position: absolute; bottom: -5px; width: 14px; height: 2px; border-radius: 1px; background: #ffd38a; box-shadow: 0 0 6px #ffb44a; }
 
 /* Reduced motion: the finished card, pips lit, no fire and no sweep. */
 @media (prefers-reduced-motion: reduce) {
