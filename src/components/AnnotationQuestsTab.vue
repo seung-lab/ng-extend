@@ -649,11 +649,18 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
                   <button v-if="isActive(r)" class="nge-aq-save" :disabled="questWork.saving === r.segmentId" @click="saveNow(r)" title="Save your work on this quest now. It is also saved as you place annotations.">Save</button>
                 </span>
                 <button v-if="isActive(r) && swapShown" class="nge-aq-btn nge-aq-btn--swap" :disabled="!swapReady" @click.stop="swapBbDc"
-                        :title="swapReady ? 'Swap the Basal body and Daughter centriole marks, for when the two were placed the wrong way round' : 'Swap Basal body and Daughter centriole: works once you have placed a mark in either'" aria-label="Swap the Basal body and Daughter centriole marks">
-                  <svg width="30" height="16" viewBox="0 0 30 16" aria-hidden="true">
-                    <circle cx="6" cy="8" r="4" fill="#f5d142"/><circle cx="24" cy="8" r="4" fill="#e06060"/>
-                    <path d="M9 4.2 Q15 0.5 21 4.2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M19.2 2.6 L21.3 4.4 L18.6 5.1" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
-                    <path d="M21 11.8 Q15 15.5 9 11.8" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/><path d="M10.8 13.4 L8.7 11.6 L11.4 10.9" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>
+                        :title="swapReady ? 'Swap the Basal body and Daughter centriole marks' : 'Swap the Basal body and Daughter centriole marks (place a mark first)'" aria-label="Swap the Basal body and Daughter centriole marks">
+                  <svg class="nge-aq-swap-icon" width="34" height="18" viewBox="0 0 34 18" aria-hidden="true">
+                    <defs>
+                      <radialGradient id="nge-swap-gold" cx="35%" cy="35%" r="70%"><stop offset="0" stop-color="#fff6c4"/><stop offset="0.45" stop-color="#f5d142"/><stop offset="1" stop-color="#c79a12"/></radialGradient>
+                      <radialGradient id="nge-swap-red" cx="35%" cy="35%" r="70%"><stop offset="0" stop-color="#ffd0cc"/><stop offset="0.45" stop-color="#ec6a6a"/><stop offset="1" stop-color="#b23a3a"/></radialGradient>
+                    </defs>
+                    <path d="M10.5 5.2 C14 1.6 20 1.6 23.5 5.2" fill="none" stroke="#9fd8ff" stroke-width="1.3" stroke-linecap="round"/>
+                    <path d="M24.6 6.4 L24.2 2.9 L21 4.4 Z" fill="#9fd8ff"/>
+                    <path d="M23.5 12.8 C20 16.4 14 16.4 10.5 12.8" fill="none" stroke="#9fd8ff" stroke-width="1.3" stroke-linecap="round"/>
+                    <path d="M9.4 11.6 L9.8 15.1 L13 13.6 Z" fill="#9fd8ff"/>
+                    <circle cx="6" cy="9" r="4.6" fill="url(#nge-swap-gold)"/>
+                    <circle cx="28" cy="9" r="4.6" fill="url(#nge-swap-red)"/>
                   </svg>
                   <span v-if="swapNote" class="nge-aq-swap-note">{{ swapNote }}</span>
                 </button>
@@ -787,7 +794,9 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
 .nge-aq { display: flex; flex-direction: column; font-family: 'Inter', system-ui, sans-serif; }
 /* The slim quest bar sits over the view, where the page's own monospace
    showed through ("why does this player have this weird type?", 2026-11-24). */
-.nge-aq-btn--swap { display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; color: #cfe4fa; }
+.nge-aq-btn--swap { display: inline-flex; align-items: center; gap: 6px; padding: 4px 9px; color: #cfe4fa; }
+.nge-aq-swap-icon { display: block; filter: drop-shadow(0 0 3px rgba(126, 202, 255, 0.25)); transition: transform 0.2s ease; }
+.nge-aq-btn--swap:hover:not(:disabled) .nge-aq-swap-icon { transform: scale(1.08); filter: drop-shadow(0 0 5px rgba(126, 202, 255, 0.5)); }
 .nge-aq-swap-note { font-size: 12px; color: #a6ffd6; }
 .nge-aq-btn--swap:disabled { opacity: 0.45; cursor: default; }
 .nge-aq-head { padding: 10px 12px 8px; border-bottom: 1px solid rgba(120, 140, 255, 0.08); display: flex; flex-direction: column; gap: 5px; }
