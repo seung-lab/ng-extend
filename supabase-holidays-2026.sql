@@ -37,7 +37,7 @@ BEGIN
   IF NOT p_dry THEN
     INSERT INTO public.special_badges (slug, name, description, image_url, thumbnail_url)
     VALUES ('thanksgiving-2026', nm,
-            'You played Pyr on Thanksgiving 2026. We are thankful for you!', art, art)
+            'Pyr is Thankful for YOU! Citizen science wouldn''t be possible without you :)', art, art)
     ON CONFLICT (slug) DO UPDATE SET name = EXCLUDED.name, description = EXCLUDED.description,
       image_url = EXCLUDED.image_url, thumbnail_url = EXCLUDED.thumbnail_url
     RETURNING id INTO bid;
@@ -67,9 +67,9 @@ BEGIN
     VALUES (bid, r.uid, NULL, 'Played Pyr on Thanksgiving 2026')
     ON CONFLICT (badge_id, user_id) DO NOTHING;
     INSERT INTO public.notifications (title, body, image_url, thumbnail_url, target_type, target_id, send_at, post_to_chat)
-    VALUES ('🦃 New Achievement: ' || nm,
-            'Happy Thanksgiving' || CASE WHEN COALESCE(r.dname, '') <> '' THEN ', ' || r.dname ELSE '' END
-              || '! You earned "' || nm || '" for mapping the brain with us today. We are thankful for you!',
+    -- The Achievement card shows the quoted name and the words after "award!" (Ames 2026-11-24).
+    VALUES ('New Achievement: ' || nm,
+            'You earned the "' || nm || '" award! Pyr is Thankful for YOU! Citizen science wouldn''t be possible without you :)',
             art, art, 'user', r.uid::TEXT, now(), false);
   END LOOP;
 END;
