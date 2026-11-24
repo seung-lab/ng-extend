@@ -254,6 +254,8 @@ const showHowTo = ref(false);
  *  box its ? opens. */
 function openHowTo() {
   if (filter.value === 'orphans') { showHowTo.value = false; document.dispatchEvent(new CustomEvent('nge:fragments-howto')); return; }
+  // Quests has its own too (Ames 2026-11-24: in a Cilia Quest it opened the BC Challenge steps).
+  if (filter.value === 'quests') { showHowTo.value = false; document.dispatchEvent(new CustomEvent('nge:quest-howto')); return; }
   showHowTo.value = !showHowTo.value;
 }
 /** The Available tab's name here: "BC Challenge" on the Retina, where every
@@ -3920,7 +3922,7 @@ onBeforeUnmount(() => {
               <a v-if="datasetTour" class="nge-cl-howto" href="#" @click.prevent="startDatasetTour(activeDataset)"
                  title="Replay the guided tour of this dataset's cell types">tour</a>
               <a v-if="datasetHowTo" class="nge-cl-howto" :class="{ 'nge-cl-howto--open': showHowTo }" href="#" @click.prevent="openHowTo"
-                 :title="filter === 'orphans' ? 'How to rescue a Lost Fragment' : 'How to proofread cells in this dataset'">instructions</a>
+                 :title="filter === 'orphans' ? 'How to rescue a Lost Fragment' : filter === 'quests' ? 'How to do a Cilia Quest' : 'How to proofread cells in this dataset'">instructions</a>
               <a v-else-if="datasetInstructionsUrl" class="nge-cl-howto" :href="datasetInstructionsUrl" target="_blank" rel="noopener"
                  title="How to proofread cells in this dataset (opens in a new tab)">instructions</a>
               <a v-if="datasetCellTypesState" class="nge-cl-howto" href="#" @click.prevent="openCellTypes"

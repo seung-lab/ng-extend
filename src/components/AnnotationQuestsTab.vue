@@ -272,6 +272,10 @@ function setHeadFolded(v: boolean) {
 let stopTextEdit: (() => void) | null = null;
 onMounted(() => { stopTextEdit = onTextEditAsked(key => { if (key === 'quest.retina_cilia.steps') { headFolded.value = false; showHelp.value = true; } }); });
 onUnmounted(() => stopTextEdit?.());
+// The Cell Library's own "instructions" link, on the Quests tab, opens these.
+const onQuestHowTo = () => { showHelp.value = true; nudging.value = false; markIntroSeen(); };
+onMounted(() => document.addEventListener('nge:quest-howto', onQuestHowTo));
+onUnmounted(() => document.removeEventListener('nge:quest-howto', onQuestHowTo));
 /** The first time a player opens the tab, the Instructions button is lit
  *  once, a few seconds in, so it is not missed (Ames 2026-10-13). Once per
  *  browser: it plays one time and never loops. */
@@ -574,7 +578,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
         </span>
       </div>
       <EditableText v-if="!headFolded" text-key="quest.retina_cilia.lead" :original="QUEST_LEAD" text-class="nge-aq-lead" @action="onQuestTextAction" />
-      <QuestInstructions v-if="showHelp && !headFolded" :lead="QUEST_LEAD" :steps="QUEST_STEPS" @close="showHelp = false" @action="onQuestTextAction" />
+      <QuestInstructions v-if="showHelp" :lead="QUEST_LEAD" :steps="QUEST_STEPS" @close="showHelp = false" @action="onQuestTextAction" />
       <div v-if="backend.userId && !headFolded" class="nge-aq-headrow">
         <button v-if="!play.on && available.length" class="nge-aq-play" @click="startPlay('quests')"
                 title="Play: claims a quest cell for you and opens it. After Submit, the next one.">
