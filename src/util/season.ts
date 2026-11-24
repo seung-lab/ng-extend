@@ -5,6 +5,8 @@
  *   the top of the screen now and then (src/util/leaves.ts).
  * - Thanksgiving week: the turkey walks along the bottom of the screen
  *   (src/util/turkey.ts).
+ * - The holidays (1 December to New Year's Day): a string of colored lights
+ *   hangs along the top bar (src/components/HolidayLights.vue).
  * - Highlight's point burst takes a seasonal shape (Nseraf's idea, report #342;
  *   the cut, merge and Find Path bursts stay plain dots, Ames 2026-11-04):
  *   bats from late September to the end of October, leaves in November
@@ -46,6 +48,12 @@ export function thanksgivingWeek(now = seasonToday()): boolean {
 export function fallSeason(now = seasonToday()): boolean {
   const y = now.getFullYear(), t = now.getTime();
   return t >= dayStart(y, 8, 22) && t < dayStart(y, 10, thanksgiving(y).getDate() + 4);
+}
+
+/** The holidays, for the top bar's string of lights: 1 December to New Year's Day. */
+export function holidaySeason(now = seasonToday()): boolean {
+  const m = now.getMonth();
+  return m === 11 || (m === 0 && now.getDate() === 1);
 }
 
 /** Easter Sunday (Western), worked out for any year (the Gregorian computus). */

@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { pumpkinSeason } from '../util/pumpkin';
 import { turkeySeason } from '../util/turkey';
+import { holidaySeason } from '../util/season';
 import { leavesSeason } from '../util/leaves';
 import { isMac } from '../util/platform';
 import {ref, onMounted, onUnmounted, computed, watch, nextTick} from 'vue';
@@ -122,6 +123,7 @@ const draftShowRadio = ref(true);
 const draftShowPlay = ref(true);
 const draftPumpkin = ref(true);
 const draftTurkey = ref(true);
+const draftLights = ref(true);
 const draftLeaves = ref(true);
 const draftSegShowId = ref(false);
 const draftCalm = ref(false);
@@ -209,6 +211,7 @@ onMounted(() => {
   draftShowPlay.value = prefsStore.prefs.hidePlayButton !== true;
   draftPumpkin.value = prefsStore.prefs.hidePumpkin !== true;
   draftTurkey.value = prefsStore.prefs.hideTurkey !== true;
+  draftLights.value = prefsStore.prefs.hideLights !== true;
   draftLeaves.value = prefsStore.prefs.hideLeaves !== true;
   draftSegShowId.value = prefsStore.prefs.segShowId === true;
   draftCalm.value = prefsStore.prefs.calmScreen === true;
@@ -293,7 +296,7 @@ async function handleSave() {
   prefsStore.save({
     flag, bio, toolbarIcons: savedToolbar,
     toolbarIconsInjected: markInjected(prefsStore.prefs.toolbarIconsInjected),
-    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageDetailByDataset: detailByDatasetToSave(), imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, hidePlayButton: !draftShowPlay.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, hideTurkey: !draftTurkey.value, hideLeaves: !draftLeaves.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, autoTurn: draftAutoTurn.value, retinaAnnotationLayers: draftRetinaAnnot.value, layerHideButton: draftLayerHide.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, quickMergeKey: draftQuickMerge.value, newLayerKey: draftNewLayerKey.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
+    chatMuted: draftChatMuted.value, helpMuted: draftHelpMuted.value, chatFadeAway: draftChatFade.value, chatMarkMine: draftChatMarkMine.value, showNgControlsButton: draftShowNgControls.value, showXyzCorner: draftShowXyz.value, keepDisplayOnJump: draftKeepDisplay.value, cellCompleteMessage: draftCellCelebration.value ? (savedCellMessage === 'small' ? 'small' : 'full') : 'off', achievementCelebration: draftAchievementCelebration.value, notifCategories: draftNotifCategories.value, showDailyDigest: draftDailyDigest.value, imageDetail: draftImageDetail.value, imageDetailByDataset: detailByDatasetToSave(), imageSource: draftImageSource.value, classicLayerClicks: draftClassicLayers.value, hideRadio: !draftShowRadio.value, hidePlayButton: !draftShowPlay.value, undeleteCounter: draftUndeleteCounter.value, hidePumpkin: !draftPumpkin.value, hideTurkey: !draftTurkey.value, hideLeaves: !draftLeaves.value, hideLights: !draftLights.value, segShowId: draftSegShowId.value, calmScreen: draftCalm.value, pointParticles: draftParticles.value, cursorXL: draftCursorXL.value, autoTurn: draftAutoTurn.value, retinaAnnotationLayers: draftRetinaAnnot.value, layerHideButton: draftLayerHide.value, largeText: draftLargeText.value, hideTopBar: draftHideTopBar.value, imageLayerPanel: draftImageLayerPanel.value, cellLibraryStartTab: draftLibraryTab.value, jumpAddsToView: draftJumpAdds.value, quickMergeKey: draftQuickMerge.value, newLayerKey: draftNewLayerKey.value, offerViewRestore: draftOfferRestore.value, annotationSize: undefined, annotationGems: draftAnnotationGems.value, showAnnotationSetupTabs: draftAnnotationSetupTabs.value, showSegSetupTabs: draftSegSetupTabs.value,
     datasetSwitchOpens: draftSwitchOpens.value, datasetBareSwitch: draftSwitchOpens.value === 'bare', datasetStartViews: draftStartViews.value,
     extraDatasets: draftExtra.value,
     hoverStyle: draftHoverStyle.value, hoverStyleAuto: false, pulseColor: draftPulseColor.value, colorFamilies: [...draftColorFamilies.value],
@@ -516,7 +519,7 @@ const changedKeys = computed(() => {
     ['autoTurn', !draftAutoTurn.value], ['pulseColor', draftPulseColor.value !== ''], ['colorFamilies', draftColorFamilies.value.length > 0],
     ['hidePumpkin', !draftPumpkin.value], ['cellCelebration', !draftCellCelebration.value], ['achievementCelebration', !draftAchievementCelebration.value],
     ['notifCategories', draftNotifCategories.value], ['showDailyDigest', !draftDailyDigest.value], ['pointParticles', !draftParticles.value],
-    ['hideTurkey', !draftTurkey.value], ['hideLeaves', !draftLeaves.value], ['calmScreen', draftCalm.value], ['cursorXL', draftCursorXL.value],
+    ['hideTurkey', !draftTurkey.value], ['hideLeaves', !draftLeaves.value], ['hideLights', !draftLights.value], ['calmScreen', draftCalm.value], ['cursorXL', draftCursorXL.value],
     ['largeText', draftLargeText.value], ['hideTopBar', draftHideTopBar.value], ['segShowId', draftSegShowId.value],
     ['hideRadio', !draftShowRadio.value], ['hidePlayButton', !draftShowPlay.value],
     ['quickMergeKey', draftQuickMerge.value], ['newLayerKey', draftNewLayerKey.value !== 'shift'],
@@ -934,6 +937,10 @@ onUnmounted(() => { navObserver?.disconnect(); navObserver = null; });
             <label data-set="hideTurkey" v-if="turkeySeason()" class="nge-settings-toggle" title="For Thanksgiving week, now and then a turkey walks along the bottom of the screen, stops to gobble, and walks off. Click it to make it hop. Off: no turkey. The turkey button by the chat box turns him off and on too. Calm screen keeps him away.">
               <input type="checkbox" v-model="draftTurkey" />
               <span class="nge-settings-toggle-label">Show the Thanksgiving turkey</span>
+            </label>
+            <label data-set="hideLights" v-if="holidaySeason()" class="nge-settings-toggle" title="In December, a string of colored lights hangs along the top bar and twinkles. It never blocks a click. Off: no lights. Calm screen keeps them lit but still.">
+              <input type="checkbox" v-model="draftLights" />
+              <span class="nge-settings-toggle-label">Holiday lights</span>
             </label>
             <label data-set="hideLeaves" v-if="leavesSeason()" class="nge-settings-toggle" title="In the fall, now and then a few autumn leaves drift down from the top of the screen. They never block a click. Off: no leaves. The leaf button by the chat box turns them off and on too. Calm screen keeps them away.">
               <input type="checkbox" v-model="draftLeaves" />

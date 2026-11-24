@@ -1139,6 +1139,9 @@ export interface UserPreferences {
   /** Hide the falling autumn leaves (src/util/leaves.ts). Defaults to false:
    *  they fall now and then in the fall. */
   hideLeaves?: boolean;
+  /** Hide the holiday lights along the top bar (src/components/HolidayLights.vue).
+   *  Defaults to false: they hang there in December. */
+  hideLights?: boolean;
   /** The tab the Cell Library opens on (Nik 2026-10-09). Unset: My Cells. */
   cellLibraryStartTab?: 'mine' | 'available' | 'claimed' | 'all' | 'help' | 'links';
   /** Jumping to a cell ADDS it to the view instead of replacing what is

@@ -58,6 +58,8 @@ import NotificationFeedPanel from "components/NotificationFeedPanel.vue";
 import HuntPanel from "components/HuntPanel.vue";
 import HuntGemFx from "components/HuntGemFx.vue";
 import HuntBegins from "components/HuntBegins.vue";
+import BlackFridayBanner from "components/BlackFridayBanner.vue";
+import HolidayLights from "components/HolidayLights.vue";
 import HuntOpening from "components/HuntOpening.vue";
 import { huntState, loadHunts, featuredHunt, phaseNow, countdown, takeHuntAfterSwitch, goToHunt, startGemWatch, openTestHunt, clockParts } from '../hunt';
 import DatasetSelectorPanel from "components/DatasetSelectorPanel.vue";
@@ -1461,6 +1463,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
   <!-- Each gem's answer on the spot; the start of a Hunt (Ames 2026-10-21) -->
   <hunt-gem-fx />
   <hunt-begins @open="openHunt" />
+  <black-friday-banner />
   <hunt-opening />
   <notification-feed-panel :visible="showNotifications" @hide="showNotifications = false" @open-help="cellLibraryInitialTab = 'help'; showCellLibrary = true" />
   <chat-panel v-if="showChat" @hide="showChat = false" />
@@ -1481,6 +1484,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
     @hide="showAssistant = false"
   />
   <div id="extensionBar" @focusin="onBarFocusIn" @focusout="onBarFocusOut">
+    <holiday-lights />
     <div class="ng-extend-logo">
       <!-- Click → hard refresh. Reloads the bundle from the server (skips
            the disk cache so a freshly-deployed JS hits the user without a
@@ -1974,6 +1978,7 @@ onUnmounted(() => { window.removeEventListener('mousemove', onBarMouseMove, { ca
 }
 
 #extensionBar {
+  position: relative;   /* the holiday lights hang along its top edge */
   display: flex;
   height: 40px;
   align-items: center;

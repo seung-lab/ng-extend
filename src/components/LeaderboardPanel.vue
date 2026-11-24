@@ -10,6 +10,7 @@ import {EYEWIRE_FLAG} from '../data/countries';
 import nurroTrophy from '../../static/badges/pyr/nurro-trophy.png';
 import pyrIcon from '../../static/badges/pyr/pyr-icon.png';
 import { isBugReportClick } from '../util/bug_report_click';
+import { isBlackFriday } from '../util/black_friday';
 
 const {prefs} = storeToRefs(useUserPreferencesStore());
 const backendStore = useProofreadingBackendStore();
@@ -25,6 +26,8 @@ const METRIC_STORAGE_KEY = 'nge-leaderboard-metric';
 const initialMetric = (() => { try { return localStorage.getItem(METRIC_STORAGE_KEY); } catch { return null; } })();
 const metric = ref<Metric>(initialMetric === 'completions' || initialMetric === 'quests' ? initialMetric : 'edits');
 const isQuests = computed(() => metric.value === 'quests');
+/** Black Friday: every quest counts twice today (src/util/black_friday.ts). */
+const doubleQuests = isBlackFriday();
 function setMetric(m: Metric) {
   metric.value = m;
   try { localStorage.setItem(METRIC_STORAGE_KEY, m); } catch {}
@@ -532,8 +535,9 @@ onUnmounted(() => {
             :class="{ 'nge-lb-metric--active': metric === 'quests' }"
             title="For now, only Cilia Quests finished on the Retina"
             @click="setMetric('quests')"
-          >Quests</button>
+          >Quests<span v-if="doubleQuests" class="nge-lb-2x" title="Black Friday: every quest counts twice today">2×</span></button>
         </div>
+        <div v-if="isQuests && doubleQuests" class="nge-lb-quest-lead nge-lb-quest-lead--2x">Black Friday: every quest you finish today counts twice, until midnight Eastern time.</div>
         <div v-if="isQuests" class="nge-lb-quest-lead">For now this counts only Cilia Quests on the Retina, not MEC quests or Lost Fragments. Days are US Eastern time.</div>
 
         <div ref="contentEl" class="nge-lb-content">
@@ -1150,6 +1154,8 @@ onUnmounted(() => {
   background: rgba(120, 180, 255, 0.06);
   color: rgba(180, 215, 245, 0.85);
 }
+.nge-lb-2x { margin-left: 5px; padding: 0 4px; border-radius: 4px; font-size: 10px; font-weight: 800; color: #1a1300; background: #f5d142; box-shadow: 0 0 6px rgba(245, 209, 66, 0.7); vertical-align: 1px; }
+.nge-lb-quest-lead--2x { color: #f5d142; font-weight: 600; }
 .nge-lb-metric--active {
   background: rgba(120, 180, 255, 0.12);
   border-color: rgba(120, 180, 255, 0.45);
