@@ -71,10 +71,29 @@ BEGIN
     VALUES ('New Achievement: ' || nm,
             'You earned the "' || nm || '" award! Pyr is Thankful for YOU! Citizen science wouldn''t be possible without you :)',
             art, art, 'user', r.uid::TEXT, now(), false);
+    -- The "earned" line in chat, like an award an admin gives (report 641,
+    -- 2026-11-26). Once per player, the same row chat.achievement writes.
+    INSERT INTO public.chat_messages (user_id, name, rank, text, dataset)
+    SELECT u.id, COALESCE(NULLIF(u.username, ''), NULLIF(u.display_name, ''), 'Player'),
+           'achievement', 'earned the ' || nm || ' award', 'achievement:special:' || bid
+    FROM public.users u
+    WHERE u.id = r.uid
+      AND NOT EXISTS (SELECT 1 FROM public.chat_messages c
+                      WHERE c.user_id = r.uid AND c.dataset = 'achievement:special:' || bid);
   END LOOP;
 END;
 $$;
 REVOKE ALL ON FUNCTION public.ew_give_thanksgiving_2026(BOOLEAN) FROM PUBLIC, anon, authenticated;
+-- The players awarded before the chat line was added get theirs now (report 641).
+INSERT INTO public.chat_messages (user_id, name, rank, text, dataset)
+SELECT u.id, COALESCE(NULLIF(u.username, ''), NULLIF(u.display_name, ''), 'Player'),
+       'achievement', 'earned the ' || b.name || ' award', 'achievement:special:' || b.id
+FROM public.special_badge_awards a
+JOIN public.special_badges b ON b.id = a.badge_id AND b.slug = 'thanksgiving-2026'
+JOIN public.users u ON u.id = a.user_id
+WHERE NOT EXISTS (SELECT 1 FROM public.chat_messages c
+                  WHERE c.user_id = a.user_id AND c.dataset = 'achievement:special:' || b.id)
+ORDER BY u.created_at;
 
 -- Every 15 minutes on Nov 26, 27 and 28 (UTC days; the function itself keeps
 -- to Thanksgiving through Nov 28 Eastern). Needs pg_cron, which Pyr already uses.
