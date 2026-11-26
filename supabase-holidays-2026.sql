@@ -49,13 +49,20 @@ BEGIN
     SELECT u.id AS uid, u.display_name AS dname
     FROM public.users u
     WHERE (u.last_edit_date = day                                  -- opened Pyr that day (their own calendar)
-           OR EXISTS (SELECT 1 FROM public.edit_log e
-                      WHERE e.user_id = u.id AND e.success IS NOT FALSE
-                        AND e."timestamp" >= (day::timestamp AT TIME ZONE 'America/New_York')
-                        AND e."timestamp" <  ((day + 1)::timestamp AT TIME ZONE 'America/New_York'))
-           OR EXISTS (SELECT 1 FROM public.chat_presence c
-                      WHERE c.user_id = u.id
-                        AND (c.last_seen_at AT TIME ZONE 'America/New_York')::date = day))
+           OR u.id IN (                                             -- or any sign of being in the game that day, Eastern time
+             SELECT s.uid FROM (
+               SELECT e.user_id AS uid, e."timestamp" AS t FROM public.edit_log e WHERE e.success IS NOT FALSE
+               UNION ALL SELECT c.user_id, c.last_seen_at FROM public.chat_presence c
+               UNION ALL SELECT c.user_id, c.joined_at FROM public.chat_presence c
+               UNION ALL SELECT v.user_id, v.updated_at FROM public.user_views v          -- saves the view while playing
+               UNION ALL SELECT st.user_id, st.updated_at FROM public.user_settings st
+               UNION ALL SELECT ev.user_id, ev.at FROM public.pyr_live_events ev
+               UNION ALL SELECT m.user_id, m.created_at FROM public.chat_messages m
+               UNION ALL SELECT nr.user_id, coalesce(nr.read_at, nr.dismissed_at) FROM public.notification_reads nr
+               UNION ALL SELECT tt.user_id, tt.last_at FROM public.team_time_days tt
+             ) s
+             WHERE s.t >= (day::timestamp AT TIME ZONE 'America/New_York')
+               AND s.t <  ((day + 1)::timestamp AT TIME ZONE 'America/New_York')))
       AND NOT EXISTS (SELECT 1 FROM public.special_badge_awards a
                       WHERE a.badge_id = bid AND a.user_id = u.id)
     ORDER BY u.created_at
