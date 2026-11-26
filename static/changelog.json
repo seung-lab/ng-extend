@@ -2,6 +2,19 @@
   "about": "What changed in Pyr, for players. Newest first. Every deploy that changes something a player can see or do adds an entry at the top: 'at' is when it went live (UTC), the title names it, and each item is one plain sentence a player would understand, with no code words. The game shows these in the 'New version ready' notice. See CHANGELOG-RULE in README.md.",
   "entries": [
     {
+      "at": "2026-11-26T15:22:00Z",
+      "title": "Cilia Quest fixes, and a way out of a stuck merge",
+      "items": [
+        "Cilia Quest: Again opens your submitted view first, so your fix, the crosshair check and the new link are all on that cell.",
+        "Cilia Quest: going back to your active cell brings its whole view back, not just the crosshairs.",
+        "Cilia Quest: a released cell opens fresh when it is claimed again, without the marks placed before.",
+        "Cancel stays on the cut and merge bar while an edit is sending, so a merge that never answers can't trap you.",
+        "Highlight between two points follows the branch and stops at your end point.",
+        "Training Sim review: each Merged pin sits on the merger itself, not in empty space nearby.",
+        "The Retina access form's first step reads more clearly."
+      ]
+    },
+    {
       "at": "2026-11-24T16:45:00Z",
       "title": "Delete button back in view",
       "items": [
