@@ -101,6 +101,8 @@ function svPointNm(sv) {
   return [0, 1, 2].map(i => (at(i) * CHUNK.size[i] + CHUNK.size[i] / 2 + CHUNK.offset[i]) * CHUNK.nm[i]);
 }
 const REVIEW_MAX = 30;
+/** How many review pins are placed exactly (the rest by their chunk). */
+const PIN_SPOTS = 8;
 /** The graph chunk of a supervoxel: its 30 bits of chunk x, y, z. */
 const CHUNK_SHIFT = BigInt(64 - 8 - CHUNK.bits * 3);
 const CHUNK_MASK = (1n << BigInt(CHUNK.bits * 3)) - 1n;
@@ -708,6 +710,26 @@ async function review(io, {taskId, me, isAdmin, withSamples = false}) {
   const parts = (partsMemo.get(`${result.taskId}:${cell}`) || []).filter(p => !p.unknown && (still ? still.has(p.root) : p.size >= MIN_PIECE));
   const mergers = parts.map(p => ({size: p.size, pointNm: svPointNm(p.samples[0]), ...(withSamples ? {samples: p.samples, partRoot: p.root} : {})}));
   const out = {missed: missed.slice(0, REVIEW_MAX), mergers: mergers.slice(0, REVIEW_MAX)};
+  // Each merger's pin where that part is fused on, to the voxel, as Jump
+  // finds it: a supervoxel id gives only the middle of its storage chunk,
+  // which can be empty space (tiikerikani, report 628: "It's just empty
+  // space for me"). The biggest few; the rest keep the rough place.
+  if (!withSamples && out.mergers.length) {
+    try {
+      const whole = await cellLeaves(cave(io), cell);
+      const pinned = parts.slice(0, Math.min(PIN_SPOTS, out.mergers.length));
+      for (let i = 0; i < pinned.length; i += 3) {
+        await Promise.all(pinned.slice(i, i + 3).map(async (p, k) => {
+          if (!p.svs || !p.svs.length) return;
+          try {
+            const own = toSet(p.svs);
+            const at = await contact.meetingNm({fetchImpl: io.fetch, cell: minus(whole, own), piece: own, near: own});
+            if (at) out.mergers[i + k].pointNm = at;
+          } catch (e) { console.warn('[sandbox-match] review pin', e.message); }
+        }));
+      }
+    } catch (e) { console.warn('[sandbox-match] review pins', e.message); }
+  }
   // Each pin on a section with an image there, as Jump's spots. Jump asks with
   // samples and moves only the one spot it gives (Ames 2026-11-18: "it really
   // takes a long time to load jump").

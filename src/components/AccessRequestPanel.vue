@@ -183,7 +183,7 @@ const when = (iso: string | null | undefined) => iso ? new Date(iso).toLocaleDat
       <p v-else-if="slim && status === 'redo'" class="nge-acc-slimline nge-acc-slimline--redo">{{ redoLeft === 1 ? '1 example' : `${redoLeft} examples` }} to redo. Full shows the notes.</p>
       <p v-else-if="slim && status === 'invited'" class="nge-acc-slimline nge-acc-slimline--yes">Your edit access has been granted!</p>
       <ul v-else-if="status === 'draft' && !slim" class="nge-acc-how nge-acc-steps">
-        <li>Find ten mistakes on cells that are not tutorial cells, in the Sandbox or the retina.</li>
+        <li>Find ten mistakes on cells that are not tutorial cells, such as cells in the Sandbox or the retina.</li>
         <li><b>Seven cuts:</b> place red and blue Multicut (cut) points on each side of where you would cut.</li>
         <li><b>Three merges:</b> press M, then Ctrl+click the two pieces to place merge points.</li>
         <li><b>Place the cut or merge points, but do not submit the edit.</b> Then save the view here.</li>

@@ -399,6 +399,13 @@ export async function addHighlight(a: Pick, b: Pick, style: HighlightStyle, stil
         : (pathError?.message || 'No path came back between those points. Try two points farther apart.'));
     }
   }
+  // A path of only its two ends is a straight line, whatever the branch does
+  // between them (hi529, report 627: "only color in a straight line"). The
+  // cell's branch map follows the branch, so it goes first there.
+  if (nm.length <= 2 && Math.hypot(...[0, 1, 2].map(i => nm![0][i] - nm![nm!.length - 1][i])) > 1500) {
+    try { return await addBranchHighlight(a, 'toward', style, b, stillWanted, ''); }
+    catch (e) { if (!stillWanted()) return 0; console.warn('[highlight] branch map failed, drawing the straight path:', e); }
+  }
   // Annotation layers live in the viewer's own coordinates.
   const scalesNm: number[] = Array.from(viewer.coordinateSpace.value.scales as Float64Array).map(x => x / 1e-9);
   const pts = nm.map(p => Float32Array.from(p.map((v, i) => v / (scalesNm[i] || 1))));
@@ -412,9 +419,15 @@ export async function addHighlight(a: Pick, b: Pick, style: HighlightStyle, stil
     Math.hypot(...[0, 1, 2].map(i => (p[i] - q[i]) * (scalesNm[i] || 1)));
   const ga = Float32Array.from(a.global), gb = Float32Array.from(b.global);
   if (ga.length === 3 && gb.length === 3 && ga.every(Number.isFinite) && gb.every(Number.isFinite)) {
-    const first = pts[0], last = pts[pts.length - 1];
+    let first = pts[0], last = pts[pts.length - 1];
     const straight = distNm(ga, first) + distNm(gb, last) <= distNm(ga, last) + distNm(gb, first);
     const [head, tail] = straight ? [ga, gb] : [gb, ga];
+    // A piece's middle can lie past the click: the line ran on beyond the
+    // end point and back (hi529, report 627). Such a middle is left out
+    // when the click is nearer the point before it than the middle is.
+    while (pts.length > 2 && distNm(tail, pts[pts.length - 2]) < distNm(pts[pts.length - 1], pts[pts.length - 2])) pts.pop();
+    while (pts.length > 2 && distNm(head, pts[1]) < distNm(pts[0], pts[1])) pts.shift();
+    first = pts[0]; last = pts[pts.length - 1];
     // Skip an end that is already there (a click right on a piece's middle).
     if (distNm(head, first) > 1) pts.unshift(head);
     if (distNm(tail, last) > 1) pts.push(tail);

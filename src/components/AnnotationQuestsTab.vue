@@ -320,6 +320,7 @@ function goToSoma(r: QuestRow) {
 async function openCell(r: QuestRow) {
   current.value = r.segmentId;
   error.value = '';
+  doneOnScreen.value = '';
   if (isActive(r) && questOnScreen(r.segmentId)) {
     goToSoma(r);
     message.value = `You are on ${r.index || 'this cell'}. Your work is as you left it.`;
@@ -397,6 +398,7 @@ function savedLine(r: QuestRow): string {
  *  every other segment in the view is hidden, whatever the jump preference. */
 function showOnly(r: QuestRow) {
   error.value = '';
+  if (!isActive(r)) void leaveQuestOnScreen();
   current.value = r.segmentId;
   try {
     const viewer: any = (window as any)['viewer'];
@@ -409,9 +411,39 @@ function showOnly(r: QuestRow) {
     if (xyz.length === 3) viewer.navigationState.position.value = Float32Array.from(xyz);
   } catch (e: any) { error.value = `Could not show this cell: ${e?.message || e}`; }
 }
-function viewDone(r: QuestRow) {
+/** Another cell's view is about to replace the quest on screen (toknow,
+ *  report 634: after View on a submitted cell, going back to the active
+ *  cell only moved the crosshairs and left the other cell in 3D). The
+ *  quest's work is saved as it is and the quest is marked off screen, so
+ *  opening it again brings its whole view back. */
+async function leaveQuestOnScreen() {
+  const a = questWork.active;
+  if (a && questOnScreen(a.segmentId)) await saveQuestWork(a.segmentId);
+  markQuestOnScreen(null);
+}
+/** The submitted cell whose view is on screen, for Again. */
+const doneOnScreen = ref('');
+async function viewDone(r: QuestRow): Promise<boolean> {
   current.value = r.segmentId;
-  if (!openStartLink(r.link) && !openStartLink(r.startLink)) error.value = 'This cell has no link to open.';
+  await leaveQuestOnScreen();
+  if (!openStartLink(r.link) && !openStartLink(r.startLink)) { error.value = 'This cell has no link to open.'; return false; }
+  doneOnScreen.value = r.segmentId;
+  return true;
+}
+/** Again on a submitted cell: its submitted view opens first, unless it is
+ *  on screen already, so the fix, the check and the new share link are all
+ *  on that cell (toknow, reports 625 and 634). */
+async function again(r: QuestRow) {
+  if (open.value === r.segmentId) { open.value = ''; return; }
+  if (doneOnScreen.value !== r.segmentId) {
+    if (!await viewDone(r)) return;
+    startSubmit(r, true);
+    check.value = { busy: true, ok: false, message: 'Opening your submitted view…' };
+    await new Promise(res => setTimeout(res, 2500));
+    if (open.value === r.segmentId) recount(r);
+    return;
+  }
+  startSubmit(r);
 }
 async function take(r: QuestRow) {
   busy.value = r.segmentId; error.value = ''; message.value = '';
@@ -477,6 +509,18 @@ const check = ref<{ busy: boolean; ok: boolean; message: string; other?: boolean
  *  nearby and a note). */
 const explained = computed(() => !!check.value.other && !!form.value.notes.trim());
 const canSubmit = computed(() => check.value.ok || explained.value);
+/** The crosshairs' cell is the one shown in this cell's own view (its
+ *  quest work, or its submitted view): an edit can give a cell an ID whose
+ *  history the sheet's ID is not found in (toknow, report 625). */
+function shownInOwnView(r: QuestRow, root: string): boolean {
+  if (!questOnScreen(r.segmentId) && doneOnScreen.value !== r.segmentId) return false;
+  try {
+    const shown = currentSegLayer()?.layer?.displayState?.segmentationGroupState?.value?.visibleSegments;
+    if (!shown) return false;
+    for (const id of shown) if (String(id) === root) return true;
+  } catch { /* not shown */ }
+  return false;
+}
 async function runCheck(r: QuestRow) {
   check.value = { busy: true, ok: false, message: 'Checking the crosshairs…' };
   try {
@@ -484,7 +528,7 @@ async function runCheck(r: QuestRow) {
     if (!at.root && at.supervoxel === '0') { check.value = { busy: false, ok: false, message: 'The crosshairs are on empty space. Place them inside the cell. If what you marked is outside the cell, put the crosshairs in the cell nearby and say so in Notes.' }; return; }
     if (!at.root) { check.value = { busy: false, ok: false, message: at.problem || 'Could not check the crosshairs.' }; return; }
     if (at.root === r.segmentId) { check.value = { busy: false, ok: true, message: 'The crosshairs are inside this cell.' }; return; }
-    const hit = await ancestorAmong(at.root, [r.segmentId]);
+    const hit = await ancestorAmong(at.root, [r.segmentId]) || shownInOwnView(r, at.root);
     if (hit) { check.value = { busy: false, ok: true, message: `The crosshairs are inside this cell. It has been edited since the sheet was made, so its ID is now ${at.root}.` }; return; }
     check.value = { busy: false, ok: false, other: true, message: `The crosshairs are inside ${at.root}, not this cell. If that's on purpose, say why in Notes (for example, the daughter centriole is in another segment), then Submit.` };
   } catch (e: any) { check.value = { busy: false, ok: false, message: `Could not check the crosshairs: ${e?.message || e}` }; }
@@ -494,11 +538,11 @@ function onSlimRowClick(r: QuestRow, e: MouseEvent) {
   if ((e.target as HTMLElement).closest('button, a, input, select, textarea')) return;
   if (open.value === r.segmentId) open.value = ''; else startSubmit(r);
 }
-function startSubmit(r: QuestRow) {
+function startSubmit(r: QuestRow, later = false) {
   open.value = r.segmentId;
   form.value = { status: r.status || '', splitMerged: r.splitMerged || '', notes: r.notes || '' };
   points.value = annotationCountInView();
-  void runCheck(r);
+  if (!later) void runCheck(r);
 }
 function recount(r: QuestRow) { points.value = annotationCountInView(); void runCheck(r); }
 async function send(r: QuestRow, e?: Event) {
@@ -747,7 +791,7 @@ const noPoints = computed(() => points.value === 0 && form.value.status.startsWi
               <div class="nge-aq-row-actions">
                 <button class="nge-aq-btn nge-aq-btn--jump" @click="showOnly(r)" title="Show only this cell and go to its soma">↗</button>
                 <button class="nge-aq-btn" @click="viewDone(r)" title="Open the submitted view">View</button>
-                <button v-if="isMine(r)" class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="open === r.segmentId ? (open = '') : startSubmit(r)" title="Submit this cell again with a new answer">Again</button>
+                <button v-if="isMine(r)" class="nge-aq-btn nge-aq-btn--submit" :class="{ 'nge-aq-btn--submit-open': open === r.segmentId }" @click="again(r)" title="Open your submitted view and submit this cell again with a new answer">Again</button>
               </div>
             </div>
             <div v-if="open === r.segmentId" class="nge-aq-form">

@@ -427,6 +427,9 @@ function cancelTool() {
           <div class="nge-smo-loading-indicator nge-smo-loading-indicator--left" v-if="isSubmitting">
             <span class="nge-smo-spinner"></span>
           </div>
+          <!-- Cancel stays while an edit is sending: a merge the server never
+               answered left a spinner and no way out (Annkri, report 629). -->
+          <button v-if="isSubmitting" class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Stop waiting and leave this mode. An edit already sent may still go through."><kbd v-if="!isTouchRef">Esc</kbd> Cancel</button>
           <div class="nge-smo-mode-badge split-badge">
             CUT MODE
           </div>
@@ -502,6 +505,9 @@ function cancelTool() {
           <div class="nge-smo-loading-indicator nge-smo-loading-indicator--left" v-if="isSubmitting">
             <span class="nge-smo-spinner"></span>
           </div>
+          <!-- Cancel stays while an edit is sending: a merge the server never
+               answered left a spinner and no way out (Annkri, report 629). -->
+          <button v-if="isSubmitting" class="nge-smo-action-btn cancel-btn" @click="cancelTool" title="Stop waiting and leave this mode. An edit already sent may still go through."><kbd v-if="!isTouchRef">Esc</kbd> Cancel</button>
 
           <!-- The merge controls sit together on the left, as the cut ones do
                (Ames, 2026-10-08), with Clear among them; the hint takes the

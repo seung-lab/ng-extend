@@ -163,6 +163,9 @@ export async function claimQuest(segmentId: string) {
 export async function releaseQuest(segmentId: string) {
   const out = await writing(call('quest_release', { segmentId }));
   tellScripts('release', segmentId);
+  // A released cell goes back to the queue as it came: claimed again, it
+  // opens fresh, without the marks placed before (toknow, report 635).
+  await forgetQuestWork(segmentId);
   return out;
 }
 export async function submitQuest(segmentId: string, done: { status: string; splitMerged: string; link: string; notes: string }) {
@@ -380,6 +383,15 @@ export async function saveQuestWork(segmentId: string): Promise<boolean> {
   } finally {
     if (questWork.saving === segmentId) questWork.saving = '';
   }
+}
+
+/** Drop this cell's saved quest work. Nothing breaks when it cannot be. */
+export async function forgetQuestWork(segmentId: string): Promise<void> {
+  try {
+    await supabase.from('user_views').delete().eq('dataset', workKey(segmentId));
+    const { [segmentId]: _gone, ...rest } = questWork.savedAt;
+    questWork.savedAt = rest;
+  } catch (e) { console.warn('[quests] saved work was not dropped:', e); }
 }
 
 /** This cell's saved quest work, or null when there is none. */
