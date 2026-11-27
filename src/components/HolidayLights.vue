@@ -3,7 +3,8 @@
  * A string of colored holiday lights along the top bar (Ames 2026-11-24:
  * "maybe we could start with a string of colored lights along the top bar").
  * From 1 December to New Year's Day (src/util/season.ts holidaySeason), the
- * wire swags along the bar's bottom edge and the bulbs hang just below it,
+ * wire swags along the bar's top edge and the bulbs hang in the gaps between
+ * its buttons, never over one,
  * glowing softly up and down, each at its own slow pace. It never takes a click. Settings > Holiday lights turns
  * it off (userPrefs.hideLights); calm screen and reduced motion keep the
  * bulbs lit but still.
@@ -19,9 +20,32 @@ const on = computed(() => inSeason && prefs.prefs.hideLights !== true);
 const SPAN = 46;                      // px between bulbs
 const COLORS = ['#ff4d6d', '#ffd24a', '#3ee08f', '#4fb6ff', '#c77dff', '#ff9f43'];
 const width = ref(window.innerWidth);
-const onResize = () => { width.value = window.innerWidth; };
-onMounted(() => window.addEventListener('resize', onResize));
-onUnmounted(() => window.removeEventListener('resize', onResize));
+/** Where the top bar's buttons are, left and right edges in px: no bulb hangs
+ *  over one, so the icons stay clear (Ames 2026-11-27: "it looks kind of busy
+ *  up here, especially with the lights overlapping with the icons"). */
+const busy = ref<[number, number][]>([]);
+const root = ref<HTMLElement | null>(null);
+function measure() {
+  width.value = window.innerWidth;
+  const bar = root.value?.parentElement;
+  if (!bar) return;
+  const { top, left } = bar.getBoundingClientRect();
+  const spans: [number, number][] = [];
+  for (const el of Array.from(bar.querySelectorAll<HTMLElement>('button, a, [role="button"], img, svg'))) {
+    if (root.value?.contains(el)) continue;
+    const r = el.getBoundingClientRect();
+    if (!r.width || r.top - top > 40) continue;   // only the bar's top row
+    spans.push([r.left - left - 7, r.right - left + 7]);
+  }
+  busy.value = spans;
+}
+let every: ReturnType<typeof setInterval> | null = null;
+onMounted(() => {
+  window.addEventListener('resize', measure);
+  setTimeout(measure, 500);
+  every = setInterval(measure, 5000);   // buttons come and go (sign in, a new badge)
+});
+onUnmounted(() => { window.removeEventListener('resize', measure); if (every) clearInterval(every); });
 
 /** The wire: one shallow swag between each pair of bulbs. */
 const n = computed(() => Math.max(2, Math.ceil(width.value / SPAN) + 1));
@@ -30,7 +54,7 @@ const wire = computed(() => {
   for (let i = 0; i < n.value; i++) d += ` Q${i * SPAN + SPAN / 2} 9 ${(i + 1) * SPAN} 1`;
   return d;
 });
-const bulbs = computed(() => Array.from({ length: n.value }, (_, i) => ({
+const bulbs = computed(() => Array.from({ length: n.value }, (_, i) => i).filter(i => !busy.value.some(([l, r]) => i * SPAN + SPAN / 2 >= l && i * SPAN + SPAN / 2 <= r)).map(i => ({
   x: i * SPAN + SPAN / 2,
   color: COLORS[i % COLORS.length],
   // each bulb its own pace, so the twinkle never marches in step
@@ -42,11 +66,11 @@ const bulbs = computed(() => Array.from({ length: n.value }, (_, i) => ({
 </script>
 
 <template>
-  <div v-if="on" class="nge-holiday-lights" aria-hidden="true">
+  <div v-if="on" ref="root" class="nge-holiday-lights" aria-hidden="true">
     <svg class="nge-holiday-wire" :width="n * SPAN" height="12" :viewBox="`0 0 ${n * SPAN} 12`">
       <path :d="wire" />
     </svg>
-    <span v-for="(b, i) in bulbs" :key="i" class="nge-holiday-bulb"
+    <span v-for="b in bulbs" :key="b.x" class="nge-holiday-bulb"
           :style="{ left: b.x + 'px', '--c': b.color, animationDelay: b.delay, animationDuration: b.dur, rotate: b.tilt + 'deg' }"></span>
   </div>
 </template>
