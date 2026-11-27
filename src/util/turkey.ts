@@ -2,8 +2,8 @@
  * The Thanksgiving turkey (Ames 2026-11-02), the 3D turkey from Ames's game
  * (scripts/turkey3d/turkey3d.js).
  *
- * In Thanksgiving week only (src/util/season.ts: the Sunday before through
- * the Sunday after), every so often a turkey walks along the bottom of the
+ * From the Sunday before Thanksgiving through Thanksgiving Day (it went home
+ * after Thanksgiving, Ames 2026-11-27), every so often a turkey walks along the bottom of the
  * screen. Halfway or so it stops, gobbles and flaps, then walks off the other
  * side. Clicking it makes it hop. A visit takes about twenty seconds.
  *
@@ -27,7 +27,7 @@
  */
 import { useUserPreferencesStore } from '../store';
 import { isCalm } from './calm';
-import { thanksgivingWeek } from './season';
+import { seasonToday, thanksgiving, thanksgivingWeek } from './season';
 import { kickLeaves } from './leaves';
 
 /** A file in static/ to play when it gobbles, or '' for none. */
@@ -37,7 +37,12 @@ const FIRST_MS = [60_000, 120_000], EVERY_MS = [7 * 60_000, 12 * 60_000];
 const BOX = 190, SPEED = 95; // px and px per second
 const STOP_MS = 2600;
 
-export function turkeySeason(): boolean { return thanksgivingWeek(); }
+/** The Sunday before Thanksgiving through Thanksgiving Day itself: the turkey
+ *  goes home when Thanksgiving ends (Ames 2026-11-27, "turn the turkey off now"). */
+export function turkeySeason(): boolean {
+  const now = seasonToday(), t = thanksgiving(now.getFullYear());
+  return thanksgivingWeek(now) && now.getTime() < new Date(t.getFullYear(), t.getMonth(), t.getDate() + 1).getTime();
+}
 
 export function turkeyHidden(): boolean {
   try { return useUserPreferencesStore().prefs.hideTurkey === true; } catch { return false; }
