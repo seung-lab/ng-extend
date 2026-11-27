@@ -2115,11 +2115,13 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
                     @mousedown.prevent @click.stop="toggleLights()" :title="lightsTitle()" :aria-label="lightsTitle()">
               <!-- a little green Christmas bulb (Ames 2026-11-27: "make the chat button a christmas light") -->
               <svg class="nge-chat-bulb" viewBox="0 0 14 22" width="12" height="19" aria-hidden="true">
-                <defs><radialGradient id="nge-bulb-glass" cx="40%" cy="62%" r="65%">
+                <defs><radialGradient id="nge-bulb-glass" cx="42%" cy="45%" r="65%">
                   <stop offset="0" stop-color="#eafff2" /><stop offset="0.35" stop-color="#4dff9a" /><stop offset="1" stop-color="#139c52" />
                 </radialGradient></defs>
-                <rect x="4" y="0.5" width="6" height="5" rx="1" fill="#8c98a8" />
-                <path d="M7 5.5 C2.2 8 0.6 12.5 1.4 16 C2.2 19.6 4.6 21.4 7 21.4 C9.4 21.4 11.8 19.6 12.6 16 C13.4 12.5 11.8 8 7 5.5 Z" fill="url(#nge-bulb-glass)" />
+                <!-- a C9 Christmas bulb: round at the base, coming to a point at the top, on its socket -->
+                <path d="M7 0.6 C9.6 4.2 12.6 8.4 12.6 11.6 C12.6 14.6 10.2 16.4 7 16.4 C3.8 16.4 1.4 14.6 1.4 11.6 C1.4 8.4 4.4 4.2 7 0.6 Z" fill="url(#nge-bulb-glass)" />
+                <rect x="4" y="16" width="6" height="5.5" rx="1" fill="#8c98a8" />
+                <path d="M4 18 H10 M4 19.8 H10" stroke="#5d6878" stroke-width="0.7" />
               </svg>
             </button>
           </div>

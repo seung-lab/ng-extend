@@ -32,13 +32,21 @@ function measure() {
   const bar = root.value?.parentElement;
   if (!bar) return;
   const { top, left } = bar.getBoundingClientRect();
+  // What is drawn at each point along the row, looked at directly, so a
+  // button from anywhere counts (Share is not one of the bar's own).
+  // Anything narrower than most of the screen is a button or icon; the bar
+  // and its wide wrappers are free space.
   const spans: [number, number][] = [];
-  for (const el of Array.from(bar.querySelectorAll<HTMLElement>('button, a, [role="button"], img, svg'))) {
-    if (root.value?.contains(el)) continue;
-    const r = el.getBoundingClientRect();
-    if (!r.width || r.top - top > 40) continue;   // only the bar's top row
-    spans.push([r.left - left - 7, r.right - left + 7]);
+  let from = -1;
+  for (let x = 0; x <= width.value; x += 4) {
+    const taken = [12, 28].some(y => {
+      const el = document.elementsFromPoint(left + x, top + y)[0] as HTMLElement | undefined;
+      return !!el && el.getBoundingClientRect().width < window.innerWidth * 0.6;
+    });
+    if (taken && from < 0) from = x;
+    if (!taken && from >= 0) { spans.push([from - 8, x + 8]); from = -1; }
   }
+  if (from >= 0) spans.push([from - 8, width.value + 8]);
   busy.value = spans;
   measured.value = true;
 }
@@ -58,7 +66,7 @@ const swags = computed(() => {
   const out: { l: number; r: number; dip: number }[] = [];
   let x = 0;
   for (const [l, r] of [...spans, [width.value + 1, width.value + 1] as [number, number]]) {
-    if (l - x >= 36) out.push({ l: x, r: Math.min(l, width.value), dip: Math.min(24, 5 + (l - x) * 0.07) });
+    if (l - x >= 36) out.push({ l: x, r: Math.min(l, width.value), dip: Math.min(14, 4 + (l - x) * 0.03) });
     x = Math.max(x, r);
   }
   return out;

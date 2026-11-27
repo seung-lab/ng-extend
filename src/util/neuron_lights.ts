@@ -18,6 +18,7 @@
 import {setNgeGlow, type NgeGlow} from 'neuroglancer/perspective_view/nge_props';
 import {getRootFromSupervoxel, latestDescendants} from '../widgets/pcg_service';
 import {useUserPreferencesStore} from '../store';
+import {setStatedColor} from '../widgets/widget_utils';
 import {holidaySeason} from './season';
 import {cameraAxes} from './starship';
 
@@ -33,8 +34,16 @@ const HANG: [number, number, number][] = [
   [79704, 68984, 1253],
 ];
 /** Nanometres between bulbs, and each bulb's size. */
-const SPACING_NM = 1300;
-const BULB_NM = 1000;
+const SPACING_NM = 2400;   // Ames 2026-11-27: "a little more spaced apart"
+const BULB_NM = 1700;      // and "a little bit larger"
+/** How bright each bulb's halo is next to its core. */
+const HALO = 0.32;
+/** The cell's color while it wears the lights (Ames 2026-11-27: "change the
+ *  default color of the neuron to purple?"): purple, so the warm white pops ("looks really nice with purple").
+ *  Packed as neuroglancer wants it, 0xBBGGRR. Recoloring it after is left alone. */
+const PURPLE = 0x9a42f0;   // the purple Ames tried on it
+const packed = (hex: number) => ((hex >> 16) & 0xff) | (hex & 0xff00) | ((hex & 0xff) << 16);
+const painted = new Set<string>();
 /** How far a swag sags, as a share of the gap it spans. */
 const SAG = 0.22;
 /** Warm white, as in Ames's picture. */
@@ -92,7 +101,13 @@ function cellOnScreen(layers: any[]): boolean {
   if (Date.now() - askedAt > ROOT_EVERY_MS) void resolveCurrent();
   const wanted = new Set([...CELL_IDS, ...current]);
   for (const ml of layers) for (const s of ml.layer.displayState.segmentationGroupState.value.visibleSegments) {
-    if (wanted.has(s.toString())) return true;
+    const id = s.toString();
+    if (!wanted.has(id)) continue;
+    if (!painted.has(id)) {
+      painted.add(id);
+      try { setStatedColor(ml.layer.displayState.segmentationColorGroupState.value.segmentStatedColors, s, packed(PURPLE)); } catch { /* color stays */ }
+    }
+    return true;
   }
   return false;
 }
@@ -122,13 +137,21 @@ function buildGlow(per: [number, number, number]): NgeGlow {
       bright.push(0.78 + 0.22 * (((pts.length / 3) * 0.618) % 1));
     }
   }
-  const count = pts.length / 3;
+  // Each bulb twice: a bright core, and a wide soft halo around it
+  // (Ames 2026-11-27: "these need more glow").
+  const bulbs = pts.length / 3, count = bulbs * 2;
+  const positions = new Float32Array(count * 3);
+  positions.set(pts, 0);
+  positions.set(pts, bulbs * 3);
   const colors = new Float32Array(count * 4), sizes = new Float32Array(count);
-  for (let i = 0; i < count; i++) {
-    colors.set([WARM[0] * bright[i], WARM[1] * bright[i], WARM[2] * bright[i], 1], i * 4);
-    sizes[i] = BULB_NM * (0.85 + 0.3 * bright[i]);
+  for (let i = 0; i < bulbs; i++) {
+    const b = bright[i];
+    colors.set([WARM[0] * b, WARM[1] * b, WARM[2] * b, 1], i * 4);
+    sizes[i] = BULB_NM * (0.85 + 0.3 * b);
+    colors.set([WARM[0] * b * HALO, WARM[1] * b * HALO, WARM[2] * b * HALO, HALO], (bulbs + i) * 4);
+    sizes[bulbs + i] = BULB_NM * 3.6;
   }
-  return {positions: Float32Array.from(pts), colors, sizesNm: sizes, count, nmRight: [1 / per[0], 0, 0]};
+  return {positions, colors, sizesNm: sizes, count, nmRight: [1 / per[0], 0, 0]};
 }
 
 /** Keep the bulbs' size on screen right as the view turns. */
