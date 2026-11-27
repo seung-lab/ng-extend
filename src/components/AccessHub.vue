@@ -843,7 +843,7 @@ const opName = (e: RecentEdit) => {
 </script>
 
 <template>
-  <div class="ah">
+  <div class="ah" :class="{ 'ah--sheet': open }">
     <header class="ah-head">
       <h1>Access</h1>
       <span class="ah-sum" v-if="people.length">
@@ -1132,6 +1132,9 @@ const opName = (e: RecentEdit) => {
         <textarea v-model="noteDraft" class="ah-input" rows="3" maxlength="1000" placeholder="Add a note for the team. @Celia or @Marissa tags them"></textarea>
         <button class="ah-btn" type="button" :disabled="!!busy || !noteDraft.trim()" @click="addNote(open)">{{ busy === 'note' ? 'Saving…' : 'Add note' }}</button>
       </aside>
+      <!-- On a phone the person opens as a sheet over the board (Ames 2026-11-27:
+           "I can't seem to see the individual user access on the phone"). -->
+      <div v-if="open" class="ah-backdrop" aria-hidden="true" @click="openKey = ''"></div>
     </div>
 
     <button v-if="adminCards.length || showAdmins" type="button" class="ah-fold ah-fold--wide" @click="showAdmins = !showAdmins">
@@ -1415,11 +1418,38 @@ input.ah-ask-subject, textarea.ah-ask-text { background: #0d1626; color: #e8f1ff
 .ah-bar--tut > span { background: #7F77DD; }
 .ah-bar-n { color: #c3d3ea; white-space: nowrap; text-align: right; }
 .ah-bar-x { grid-column: 2 / 4; font-size: 12px; color: #7f93b0; }
+.ah-backdrop { display: none; }
 @media (max-width: 900px) {
   .ah { padding: 12px 16px 30px; }
   .ah-main--open { grid-template-columns: minmax(0, 1fr); }
   .ah-board { grid-auto-columns: minmax(170px, 1fr); }
   .ah-main--open .ah-panel { grid-column: 1; grid-row: auto; }
   .ah-insights { grid-template-columns: minmax(0, 1fr); }
+  /* The person opens as a sheet from the bottom, over the board, instead of
+     below every column where nobody finds it. The board stays put under it. */
+  .ah--sheet { overflow: hidden; }
+  .ah-backdrop { display: block; position: fixed; inset: 0; z-index: 40; background: rgba(3,6,12,.6); }
+  .ah-main--open .ah-panel, .ah-panel { position: fixed; left: 0; right: 0; bottom: 0; top: max(48px, env(safe-area-inset-top)); z-index: 41;
+    max-height: none; overflow-y: auto; -webkit-overflow-scrolling: touch; overscroll-behavior: contain;
+    border-radius: 16px 16px 0 0; border-bottom: 0; padding: 14px 16px calc(24px + env(safe-area-inset-bottom));
+    box-shadow: 0 -10px 30px rgba(0,0,0,.5); }
+  .ah-panel h2 { margin-right: 48px; }
+  .ah-close { position: sticky; float: right; top: 0; right: 0; width: 44px; height: 44px; margin: -6px -8px 0 0; z-index: 1;
+    border-radius: 22px; background: rgba(30,48,86,.9); border: 1px solid rgba(120,160,230,.45); font-size: 26px; line-height: 1; color: #e6f0ff; }
+  /* Comfortable to tap, and no zoom when a box is tapped (iOS zooms below 16px). */
+  .ah-btn { height: 40px; }
+  .ah-search, .ah-panel input, .ah-panel textarea, .ah-panel select { font-size: 16px; }
+  .ah-card { padding: 10px 12px; }
+}
+@media (max-width: 640px) {
+  .ah-head { gap: 8px 12px; }
+  .ah-search { order: 2; margin-left: 0; width: 100%; height: 42px; }
+  .ah-sum { order: 1; flex-basis: 100%; }
+  .ah-head > .ah-btn, .ah-head > .ah-link { order: 3; }
+  .ah-totals { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  /* One column at a time, swiped sideways, with the next one peeking in. */
+  .ah-board { grid-auto-columns: 84%; scroll-snap-type: x mandatory; padding-bottom: 6px; }
+  .ah-col { scroll-snap-align: start; }
+  .ah-card { width: 100%; box-sizing: border-box; }
 }
 </style>
