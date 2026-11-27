@@ -35,6 +35,7 @@ import { pumpkinUi, togglePumpkin, pumpkinSeason, visitPumpkinPatch, smashPumpki
 import PumpkinPatchPrompt from './PumpkinPatchPrompt.vue';
 import { turkeySeason, toggleTurkey, turkeyHidden } from '../util/turkey';
 import { leavesSeason, toggleLeaves, leavesHidden } from '../util/leaves';
+import { holidaySeason } from '../util/season';
 import retinaEmblemArt from '../images/datasets/retina.png';
 import mecEmblemArt from '../images/datasets/mec.png';
 import flywireEmblemArt from '../images/datasets/flywire.png';
@@ -61,6 +62,12 @@ const showTurkeyBtn = turkeySeason();
 // The leaf button, in the fall; the turkey's takes its place in Thanksgiving week.
 const showLeavesBtn = leavesSeason() && !showTurkeyBtn;
 function leavesTitle(): string { return leavesHidden() ? 'Bring back the falling leaves' : 'Stop the falling leaves'; }
+// The lights button (Ames 2026-11-27: "a light icon next to chat to toggle
+// them on/off"), in the holidays: the top bar's lights off and on, grey while off.
+const showLightsBtn = holidaySeason();
+function lightsHidden(): boolean { return useUserPreferencesStore().prefs.hideLights === true; }
+function toggleLights() { try { useUserPreferencesStore().save({ hideLights: !lightsHidden() }); } catch { /* not signed in */ } }
+function lightsTitle(): string { return lightsHidden() ? 'Turn the holiday lights on' : 'Turn the holiday lights off'; }
 function turkeyTitle(): string { return turkeyHidden() ? 'Bring the turkey back' : 'Send the turkey away'; }
 
 const emit = defineEmits({ hide: null });
@@ -2102,6 +2109,10 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
                  the turkey on and off, grey while off, as the pumpkin's is. -->
             <button v-if="showTurkeyBtn" class="nge-chat-share-btn nge-chat-pumpkin-btn" :class="{ off: turkeyHidden() }"
                     @mousedown.prevent @click.stop="toggleTurkey()" :title="turkeyTitle()" :aria-label="turkeyTitle()">🦃</button>
+            <!-- The lights button (Ames 2026-11-27), in the holidays: the top
+                 bar's lights off and on, grey while off. -->
+            <button v-if="showLightsBtn" class="nge-chat-share-btn nge-chat-pumpkin-btn" :class="{ off: lightsHidden() }"
+                    @mousedown.prevent @click.stop="toggleLights()" :title="lightsTitle()" :aria-label="lightsTitle()">💡</button>
           </div>
         </div>
         <ScreenshotDialog v-if="showShareShot" :show="showShareShot" mode="attach"

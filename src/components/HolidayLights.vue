@@ -4,7 +4,7 @@
  * "maybe we could start with a string of colored lights along the top bar").
  * From 1 December to New Year's Day (src/util/season.ts holidaySeason), the
  * wire swags along the bar's bottom edge and the bulbs hang just below it,
- * twinkling in turn. It never takes a click. Settings > Holiday lights turns
+ * glowing softly up and down, each at its own slow pace. It never takes a click. Settings > Holiday lights turns
  * it off (userPrefs.hideLights); calm screen and reduced motion keep the
  * bulbs lit but still.
  */
@@ -34,8 +34,9 @@ const bulbs = computed(() => Array.from({ length: n.value }, (_, i) => ({
   x: i * SPAN + SPAN / 2,
   color: COLORS[i % COLORS.length],
   // each bulb its own pace, so the twinkle never marches in step
-  delay: -((i * 0.37) % 1.9).toFixed(2) + 's',
-  dur: (1.6 + ((i * 7) % 5) * 0.25).toFixed(2) + 's',
+  // slow and soft (Ames 2026-11-27: "less twinkling, more gentle")
+  delay: -((i * 1.7) % 9).toFixed(2) + 's',
+  dur: (6 + ((i * 7) % 5) * 0.8).toFixed(2) + 's',
   tilt: ((i * 13) % 17) - 8,
 })));
 </script>
@@ -65,7 +66,7 @@ const bulbs = computed(() => Array.from({ length: n.value }, (_, i) => ({
 .nge-holiday-bulb::before { content: ''; position: absolute; left: 1px; top: -3px; width: 5px; height: 3px; border-radius: 1px; background: #2c3a32; }
 @keyframes nge-holiday-twinkle {
   0%, 100% { opacity: 1; filter: brightness(1.15); }
-  50% { opacity: 0.45; filter: brightness(0.7); box-shadow: 0 0 2px 0 var(--c); }
+  50% { opacity: 0.78; filter: brightness(0.9); }
 }
 @media (prefers-reduced-motion: reduce) { .nge-holiday-bulb { animation: none; } }
 :global(body.nge-calm .nge-holiday-bulb) { animation: none; }
