@@ -53,6 +53,8 @@ export function fallSeason(now = seasonToday()): boolean {
 
 /** The holidays, for the top bar's string of lights: 1 December to New Year's Day. */
 export function holidaySeason(now = seasonToday()): boolean {
+  // TEST SERVER ONLY (claude/christmas-lights): lights on every day so Ames can see them early.
+  if (location.hostname.startsWith('claude-christmas-lights-dot-')) return true;
   const m = now.getMonth();
   return m === 11 || (m === 0 && now.getDate() === 1);
 }
