@@ -34,8 +34,8 @@ const HANG: [number, number, number][] = [
   [79704, 68984, 1253],
 ];
 /** Nanometres between bulbs, and each bulb's size. */
-const SPACING_NM = 2400;   // Ames 2026-11-27: "a little more spaced apart"
-const BULB_NM = 1700;      // and "a little bit larger"
+const SPACING_NM = 4200;   // Ames 2026-11-27: "a little more spaced apart"
+const BULB_NM = 3200;      // and "a little bit larger"
 /** How bright each bulb's halo is next to its core. */
 const HALO = 0.32;
 /** The cell's color while it wears the lights (Ames 2026-11-27: "change the
@@ -149,7 +149,7 @@ function buildGlow(per: [number, number, number]): NgeGlow {
     colors.set([WARM[0] * b, WARM[1] * b, WARM[2] * b, 1], i * 4);
     sizes[i] = BULB_NM * (0.85 + 0.3 * b);
     colors.set([WARM[0] * b * HALO, WARM[1] * b * HALO, WARM[2] * b * HALO, HALO], (bulbs + i) * 4);
-    sizes[bulbs + i] = BULB_NM * 3.6;
+    sizes[bulbs + i] = BULB_NM * 3.2;
   }
   return {positions, colors, sizesNm: sizes, count, nmRight: [1 / per[0], 0, 0]};
 }
