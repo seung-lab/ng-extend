@@ -3,7 +3,8 @@
  *
  * - Fall (22 September to the end of Thanksgiving week): leaves fall from
  *   the top of the screen now and then (src/util/leaves.ts).
- * - Thanksgiving week: the turkey walks along the bottom of the screen
+ * - The Sunday before Thanksgiving through Thanksgiving Day: the turkey
+ *   walks along the bottom of the screen
  *   (src/util/turkey.ts).
  * - The holidays (1 December to New Year's Day): a string of colored lights
  *   hangs along the top bar (src/components/HolidayLights.vue).
