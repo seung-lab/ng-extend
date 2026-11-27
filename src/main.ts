@@ -8,6 +8,7 @@ import { startImageLoadingHint } from './util/image_loading_hint';
 import {startLantern} from './util/lantern';
 import {startSpooky} from './util/spooky';
 import {startPumpkin} from './util/pumpkin';
+import {startNeuronLights} from './util/neuron_lights';
 import {setAsideStaleAddress, startReloadGuard} from './util/reload_guard';
 import {installLocalView, setLocalViewDataset} from './util/local_view';
 import {currentSegLayerName, currentSegLayer} from './datasets';
@@ -490,6 +491,7 @@ function setupViewer() {
   startLantern(viewer);
   startSpooky(viewer);
   startPumpkin(viewer);
+  startNeuronLights(viewer);
   startScytheControls();
   startStarshipIntro();
   startStarshipFlyby();

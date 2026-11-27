@@ -2112,7 +2112,16 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
             <!-- The lights button (Ames 2026-11-27), in the holidays: the top
                  bar's lights off and on, grey while off. -->
             <button v-if="showLightsBtn" class="nge-chat-share-btn nge-chat-pumpkin-btn" :class="{ off: lightsHidden() }"
-                    @mousedown.prevent @click.stop="toggleLights()" :title="lightsTitle()" :aria-label="lightsTitle()">💡</button>
+                    @mousedown.prevent @click.stop="toggleLights()" :title="lightsTitle()" :aria-label="lightsTitle()">
+              <!-- a little green Christmas bulb (Ames 2026-11-27: "make the chat button a christmas light") -->
+              <svg class="nge-chat-bulb" viewBox="0 0 14 22" width="12" height="19" aria-hidden="true">
+                <defs><radialGradient id="nge-bulb-glass" cx="40%" cy="62%" r="65%">
+                  <stop offset="0" stop-color="#eafff2" /><stop offset="0.35" stop-color="#4dff9a" /><stop offset="1" stop-color="#139c52" />
+                </radialGradient></defs>
+                <rect x="4" y="0.5" width="6" height="5" rx="1" fill="#8c98a8" />
+                <path d="M7 5.5 C2.2 8 0.6 12.5 1.4 16 C2.2 19.6 4.6 21.4 7 21.4 C9.4 21.4 11.8 19.6 12.6 16 C13.4 12.5 11.8 8 7 5.5 Z" fill="url(#nge-bulb-glass)" />
+              </svg>
+            </button>
           </div>
         </div>
         <ScreenshotDialog v-if="showShareShot" :show="showShareShot" mode="attach"
@@ -3113,6 +3122,8 @@ watch(() => chatMessages.value[chatMessages.value.length - 1], () => {
 .nge-chat-share-btn:disabled { opacity: 0.4; cursor: default; }.nge-chat-emoji { position: relative; flex: 0 0 auto; margin-left: 4px; }
 .nge-chat-pumpkin-btn { flex: 0 0 auto; margin-left: 4px; display: flex; align-items: center; justify-content: center; padding: 0; }
 .nge-chat-pumpkin-btn.off { filter: grayscale(1); opacity: 0.55; }
+.nge-chat-bulb { display: block; filter: drop-shadow(0 0 3px rgba(77, 255, 154, 0.85)); }
+.nge-chat-pumpkin-btn.off .nge-chat-bulb { filter: none; }
 .nge-chat-emoji-grid {
   position: fixed;
   display: grid;
