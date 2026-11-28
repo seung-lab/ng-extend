@@ -454,6 +454,9 @@ const currentDatasetName = computed(() => {
 const currentDatasetAbbrev = computed(() => {
   void layersStoreForLabel.activeLayers.size;
   const a = datasetAbbrev(currentSegLayerName());
+  // On a phone the dataset's icon says "Data": the name alone, so the
+  // profile and leaderboard buttons fit (Ames 2026-11-27: "some of the buttons are cut off").
+  if (isMobileRef.value) return a || 'Data';
   return a ? `Data: ${a}` : 'Dataset';
 });
 /** Set when Highlight mode cannot work on the dataset on screen: the spray

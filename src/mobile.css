@@ -495,3 +495,51 @@ body.nge-mobile .nge-cl-panel {
   .nge-h.nge-seg-list-heading--inview { flex-wrap: wrap; height: auto !important; min-height: 22px; row-gap: 6px; }
   .nge-h.nge-seg-list-heading--inview .nge-h-region { margin-left: auto; }
 }
+
+/* ── Top bar on a phone: everything fits (Ames 2026-11-27: "some of the
+   buttons are cut off"; signed in, the profile button pushed the
+   leaderboard off the right edge). Tighter pills, the same look. */
+body.nge-mobile #extensionBar .nge-ask-btn {
+  margin: 0 2px 0 4px;
+  padding: 0 10px;
+  letter-spacing: 0.04em;
+}
+body.nge-mobile #extensionBar .nge-dataset-btn,
+body.nge-mobile #extensionBar .nge-play-chip {
+  margin: 0 4px 0 2px;
+  padding: 0 10px;
+  gap: 5px;
+  letter-spacing: 0.04em;
+}
+body.nge-mobile #extensionBar .nge-ask-btn,
+body.nge-mobile #extensionBar .nge-dataset-btn,
+body.nge-mobile #extensionBar #profileBtn,
+body.nge-mobile #extensionBar #mobileLeaderboardBtn {
+  flex-shrink: 0;
+}
+/* Share fits as an icon: the word took 72px the bar does not have once the
+   profile button is in (the clipped zone showed half of it). The title
+   still says Share State. */
+body.nge-mobile #insertNGTopBar [title="Share State"] {
+  position: relative;
+  width: 32px;
+  min-width: 32px;
+  padding: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-indent: -999px;
+  color: transparent !important;
+  -webkit-text-fill-color: transparent;
+  text-shadow: none !important;
+}
+body.nge-mobile #insertNGTopBar [title="Share State"]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  margin: auto;
+  width: 15px;
+  height: 15px;
+  background: #cfdcef;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='18' cy='5' r='3'/%3E%3Ccircle cx='6' cy='12' r='3'/%3E%3Ccircle cx='18' cy='19' r='3'/%3E%3Cpath d='M8.6 13.5l6.8 4M15.4 6.5l-6.8 4'/%3E%3C/svg%3E") center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.2' stroke-linecap='round' stroke-linejoin='round'%3E%3Ccircle cx='18' cy='5' r='3'/%3E%3Ccircle cx='6' cy='12' r='3'/%3E%3Ccircle cx='18' cy='19' r='3'/%3E%3Cpath d='M8.6 13.5l6.8 4M15.4 6.5l-6.8 4'/%3E%3C/svg%3E") center / contain no-repeat;
+}
